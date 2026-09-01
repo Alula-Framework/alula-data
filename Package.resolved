@@ -4,7 +4,7 @@
     {
       "identity" : "flight",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Swift-Flight/flight.git",
+      "location" : "https://github.com/Flight-Framework/flight.git",
       "state" : {
         "revision" : "22f14db93cead16c4fb881ea08849d8792b04dde",
         "version" : "0.2.2"
@@ -13,7 +13,7 @@
     {
       "identity" : "hangar",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Swift-Flight/hangar.git",
+      "location" : "https://github.com/Flight-Framework/hangar.git",
       "state" : {
         "revision" : "568d1e6c609ffefd9ecd461f571764b00de42fb7",
         "version" : "0.2.1"
@@ -67,7 +67,7 @@
     {
       "identity" : "swift-changeset",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Swift-Flight/swift-changeset.git",
+      "location" : "https://github.com/Flight-Framework/swift-changeset.git",
       "state" : {
         "revision" : "5cca26f9096296db8624f8eabfc33f609c032b29",
         "version" : "0.1.0"

@@ -43,7 +43,7 @@ for a migration to exist but never run because someone forgot to register it.
 // The package is flight-data, and the Postgres trait is required — without it
 // the migration products are declared but hard-error at build time.
 .package(
-    url: "https://github.com/Swift-Flight/flight-data.git",
+    url: "https://github.com/Flight-Framework/flight-data.git",
     from: "0.4.0",
     traits: ["Postgres"]
 )

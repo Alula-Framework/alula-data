@@ -1,6 +1,6 @@
 # Flight Data
 
-Persistence and caching for [Flight](https://github.com/Swift-Flight/flight):
+Persistence and caching for [Flight](https://github.com/Flight-Framework/flight):
 the data-source and cache protocols, an in-memory cache, migrations, and the
 PostgreSQL and Valkey drivers.
 
@@ -26,10 +26,10 @@ Both are opt-in — name a driver to get it:
 
 ```swift
 // In-memory cache and the data protocols. No driver resolved at all.
-.package(url: "https://github.com/Swift-Flight/flight-data.git", from: "0.4.0")
+.package(url: "https://github.com/Flight-Framework/flight-data.git", from: "0.4.0")
 
 // With PostgreSQL.
-.package(url: "https://github.com/Swift-Flight/flight-data.git",
+.package(url: "https://github.com/Flight-Framework/flight-data.git",
          from: "0.4.0", traits: ["Postgres"])
 ```
 
@@ -58,7 +58,7 @@ you need.
 Per-product documentation lives in [Docs/](Docs/). How to test an application
 built on Flight — including the cache and data-source fakes this package
 ships — is covered in
-[flight's testing guide](https://github.com/Swift-Flight/flight/blob/main/Docs/testing.md).
+[flight's testing guide](https://github.com/Flight-Framework/flight/blob/main/Docs/testing.md).
 
 ## Building this repository
 

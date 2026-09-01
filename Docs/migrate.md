@@ -39,7 +39,7 @@ that wanted only the cache.
 // Package.swift
 dependencies: [
     .package(
-        url: "https://github.com/Swift-Flight/flight-data.git",
+        url: "https://github.com/Flight-Framework/flight-data.git",
         from: "0.4.0",
         traits: ["Postgres"]          // required — without it the products refuse to build
     ),

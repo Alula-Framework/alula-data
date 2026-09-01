@@ -6,7 +6,7 @@
     ExampleMigrations requires the "Postgres" trait.
 
     Consuming flight-data:
-        .package(url: "https://github.com/Swift-Flight/flight-data.git", \
+        .package(url: "https://github.com/Flight-Framework/flight-data.git", \
                  from: "0.1.0", traits: ["Postgres"])
 
     Building flight-data itself:
