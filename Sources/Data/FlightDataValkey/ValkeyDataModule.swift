@@ -22,7 +22,7 @@ import Valkey
 ///    Core /);
 /// 2. the raw connection — `ValkeyConnection`, `.scoped`, borrowed from the
 ///    scope's lease so repositories can say
-///    `@Autowired var valkey: ValkeyConnection`. For the
+///    `@Inject var valkey: ValkeyConnection`. For the
 ///    `primary` datasource it is *also* registered unqualified, so the
 ///    single-store app never writes a qualifier.
 ///
@@ -61,24 +61,19 @@ public final class ValkeyDataModule<Name: DataSourceName>: FlightModule {
             return try ValkeyDataSource(settings: settings, resetOnRelease: reset)
         }
 
-        // The scope's raw connection, borrowed from the lease (design.3's
-        // `@Autowired var valkey: ValkeyConnection`). The lease owns
-        // return-to-pool (Flight Data Core D2); this component is a view
-        // into it, living exactly as long as the same scope.
-        let connectionFactory: @Sendable (Container) throws -> ValkeyConnection = { container in
-            try container.resolveInActiveScope(
-                ScopedConnection<ValkeyDataSource>.self, qualifier: name
-            ).connection
-        }
-        container.register(ValkeyConnection.self, qualifier: name, scope: .scoped, factory: connectionFactory)
+        // Only the pool is a component. A `ValkeyConnection` is leased for
+        // one operation through `pool.withConnection { }` and returned when
+        // that operation ends — see FlightDataCore's ContainerRegistration for
+        // why the `.scoped` lease it replaces propagated lifetime up the
+        // dependency graph.
 
         // The conventional default datasource also answers unqualified
-        // resolution, so `@Autowired var valkey: ValkeyConnection` works
-        // without ceremony in the one-store app. Named datasources must be
-        // asked for by name — with several pools, silence would be guessing
-        // (Flight Core's qualifier posture).
+        // resolution, so `@Inject var pool: ValkeyDataSource` works without
+        // ceremony in the one-store app.
         if name == PrimaryDataSource.name {
-            container.register(ValkeyConnection.self, scope: .scoped, factory: connectionFactory)
+            container.register(ValkeyDataSource.self, scope: .singleton) { c in
+                try c.resolve(ValkeyDataSource.self, qualifier: name)
+            }
         }
     }
 

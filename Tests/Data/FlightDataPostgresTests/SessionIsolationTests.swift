@@ -42,18 +42,12 @@ struct SessionIsolationTests {
         try await withPostgresContainer(poolSize: 1) { container, source in
             // Pool of one: the second scope necessarily gets the same
             // connection, which is the whole point.
-            try await container.withScope { scope in
-                let connection = try container.resolve(
-                    ScopedConnection<PostgresDataSource>.self, qualifier: "primary", in: scope
-                ).connection
+            try await source.withConnection { connection in
                 _ = try await connection.query("SET app.tenant_id = 'tenant-a'", logger: .init(label: "t"))
             }
 
             try await waitForFreeConnection(source)
-            try await container.withScope { scope in
-                let connection = try container.resolve(
-                    ScopedConnection<PostgresDataSource>.self, qualifier: "primary", in: scope
-                ).connection
+            try await source.withConnection { connection in
                 let rows = try await connection.query(
                     "SELECT current_setting('app.tenant_id', true)", logger: .init(label: "t"))
                 var seen: String?
@@ -68,19 +62,13 @@ struct SessionIsolationTests {
     @Test("search_path does not leak either")
     func searchPathDoesNotLeak() async throws {
         try await withPostgresContainer(poolSize: 1) { container, source in
-            try await container.withScope { scope in
-                let connection = try container.resolve(
-                    ScopedConnection<PostgresDataSource>.self, qualifier: "primary", in: scope
-                ).connection
+            try await source.withConnection { connection in
                 _ = try await connection.query(
                     "SET search_path = pg_catalog", logger: .init(label: "t"))
             }
 
             try await waitForFreeConnection(source)
-            try await container.withScope { scope in
-                let connection = try container.resolve(
-                    ScopedConnection<PostgresDataSource>.self, qualifier: "primary", in: scope
-                ).connection
+            try await source.withConnection { connection in
                 let rows = try await connection.query(
                     "SELECT current_setting('search_path')", logger: .init(label: "t"))
                 var seen = ""
@@ -96,16 +84,10 @@ struct SessionIsolationTests {
         // session state can skip the round trip. This pins that the setting
         // does what it says, and what it costs.
         try await withPostgresContainer(poolSize: 1, resetOnRelease: false) { container, source in
-            try await container.withScope { scope in
-                let connection = try container.resolve(
-                    ScopedConnection<PostgresDataSource>.self, qualifier: "primary", in: scope
-                ).connection
+            try await source.withConnection { connection in
                 _ = try await connection.query("SET app.tenant_id = 'tenant-b'", logger: .init(label: "t"))
             }
-            try await container.withScope { scope in
-                let connection = try container.resolve(
-                    ScopedConnection<PostgresDataSource>.self, qualifier: "primary", in: scope
-                ).connection
+            try await source.withConnection { connection in
                 let rows = try await connection.query(
                     "SELECT current_setting('app.tenant_id', true)", logger: .init(label: "t"))
                 var seen: String?

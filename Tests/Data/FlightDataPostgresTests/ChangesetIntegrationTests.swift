@@ -75,12 +75,13 @@ struct ChangesetIntegrationTests {
         }
     }
 
-    /// The ambient binding: inside a postgres scope, `Repo.require()`
-    /// answers with the scope's connection-bound repo.
-    @Test func ambientRepoIsBoundInsidePostgresScopes() async throws {
+    /// The ambient binding: inside `withRepo`, `Repo.require()` answers with
+    /// the repo bound to that bracket's leased connection.
+    @Test func ambientRepoIsBoundInsideWithRepo() async throws {
         try await withPostgresContainer { container, source in
             try await cleanTables(source)
-            try await container.withPostgresScope { _ in
+            let pool = try container.resolve(PostgresDataSource.self, qualifier: "primary")
+            try await pool.withRepo { _ in
                 let repo = try Repo.require()
                 try await repo.insert(
                     User(

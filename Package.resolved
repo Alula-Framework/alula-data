@@ -1,13 +1,13 @@
 {
-  "originHash" : "998a6d6c536077a72ba7b81d371928637d8ffc06c5af7b1248b74bde2a783571",
+  "originHash" : "19647376eb9bc23ce472ab85ac9ef51df3026ff85d833768ca51306ccf868ce9",
   "pins" : [
     {
       "identity" : "flight",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/flight.git",
       "state" : {
-        "revision" : "22f14db93cead16c4fb881ea08849d8792b04dde",
-        "version" : "0.2.2"
+        "revision" : "093cd554242ac7ca6051268734e352eecbadacf5",
+        "version" : "0.13.0"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/hangar.git",
       "state" : {
-        "revision" : "568d1e6c609ffefd9ecd461f571764b00de42fb7",
-        "version" : "0.2.1"
+        "revision" : "23180ae9db79cf1a54d45ad05c79a13804a8f46b",
+        "version" : "0.3.0"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-asn1.git",
       "state" : {
-        "revision" : "a9a5efd40eaf558a2bcd48d64b1d1646be686008",
-        "version" : "1.7.1"
+        "revision" : "d9a5b37470adc940d22c3bcd5ca6953a516b727f",
+        "version" : "1.7.2"
       }
     },
     {
@@ -69,8 +69,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/swift-changeset.git",
       "state" : {
-        "revision" : "5cca26f9096296db8624f8eabfc33f609c032b29",
-        "version" : "0.1.0"
+        "revision" : "978c9b504072760bc002f793acd041930d628739",
+        "version" : "0.2.0"
       }
     },
     {
@@ -110,24 +110,6 @@
       }
     },
     {
-      "identity" : "swift-docc-plugin",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swiftlang/swift-docc-plugin",
-      "state" : {
-        "revision" : "647c708be89f834fa6a6d4945442793a77ddf5b6",
-        "version" : "1.5.0"
-      }
-    },
-    {
-      "identity" : "swift-docc-symbolkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swiftlang/swift-docc-symbolkit",
-      "state" : {
-        "revision" : "b45d1f2ed151d057b54504d653e0da5552844e34",
-        "version" : "1.0.0"
-      }
-    },
-    {
       "identity" : "swift-log",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
@@ -150,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
       "state" : {
-        "revision" : "0b18836bd8b0162e7e17a995a3fbee20ed8f3b2b",
-        "version" : "2.101.3"
+        "revision" : "a931f2c1de8dd49381ce3bf2e279d033f68d8865",
+        "version" : "2.102.0"
       }
     },
     {
@@ -159,8 +141,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio-ssl.git",
       "state" : {
-        "revision" : "d930168b86f46ca51a4bc09c5ca45c1833db8067",
-        "version" : "2.37.2"
+        "revision" : "dea6ebb773fb4b140753d48f93c8d0084531fbd5",
+        "version" : "2.37.3"
       }
     },
     {

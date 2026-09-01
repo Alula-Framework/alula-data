@@ -77,34 +77,34 @@ struct DriverBoundaryTests {
     /// The whole flow, end to end: scoped connection out of the
     /// container, changeset validation, guard on isValid, apply — with the
     /// invalid path never reaching the store.
-    @Test("end to end: validate, guard, apply through the scope's connection")
-    func endToEnd() throws {
+    @Test("end to end: validate, guard, apply through a leased connection")
+    func endToEnd() async throws {
         let container = try TestContainer.build {
             InMemoryDataModule<PrimaryDataSource>()
         }
         let source = try container.resolve(InMemoryDataSource.self, qualifier: "primary")
 
-        func update(_ user: User, email: String, in scope: Scope) throws -> [ChangesetError] {
+        func update(_ user: User, email: String, on connection: InMemoryConnection) throws
+            -> [ChangesetError]
+        {
             let changeset = Changeset(original: user)
                 .change(\.email, email)
                 .validate(\.email, .email)
             guard changeset.isValid else { return changeset.errors }
-            let lease = try container.resolve(
-                ScopedConnection<InMemoryDataSource>.self, qualifier: "primary", in: scope)
-            lease.connection.apply(try changeset.validatedChanges(), to: User.self)
+            connection.apply(try changeset.validatedChanges(), to: User.self)
             return []
         }
 
-        try container.withScope { scope in
-            let rejected = try update(.ada, email: "not-an-email", in: scope)
+        // One lease for the whole check, so both writes are addressed to the
+        // same connection and the journal below is the complete record.
+        try await source.withConnection { connection in
+            let rejected = try update(.ada, email: "not-an-email", on: connection)
             #expect(rejected == [ChangesetError(field: "email", message: "is not a valid email address")])
 
-            let accepted = try update(.ada, email: "ada@lovelace.dev", in: scope)
+            let accepted = try update(.ada, email: "ada@lovelace.dev", on: connection)
             #expect(accepted.isEmpty)
 
-            let lease = try container.resolve(
-                ScopedConnection<InMemoryDataSource>.self, qualifier: "primary", in: scope)
-            #expect(lease.connection.journal == ["UPDATE users SET email = ada@lovelace.dev WHERE id = 1"],
+            #expect(connection.journal == ["UPDATE users SET email = ada@lovelace.dev WHERE id = 1"],
                     "exactly one write reached the store — the invalid changeset never did")
         }
         #expect(source.activeCheckouts == 0)

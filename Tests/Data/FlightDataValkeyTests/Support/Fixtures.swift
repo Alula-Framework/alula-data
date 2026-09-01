@@ -50,39 +50,49 @@ struct KeylessSession: TableModel, Equatable {
 
 // MARK: - Repository
 
-/// The design doc's repository, executable: typed commands against the
-/// scope's connection, resolved through the real `@Repository`/`@Autowired`
-/// macro path.
-@Repository(scope: .scoped)
+/// The repository, executable: typed commands against a connection leased
+/// per operation, resolved through the real `@Repository`/`@Inject` macro
+/// path. A singleton holding the pool — it used to be `.scoped`, holding one
+/// connection for a whole request.
+@Repository
 struct SessionRepository {
-    @Autowired var valkey: ValkeyConnection
+    @Inject var pool: ValkeyDataSource
 
     func store(_ session: Session, ttl: Duration) async throws {
-        let key = ValkeyKey("session:\(session.id)")
-        try await valkey.hset(
-            key,
-            data: [
-                .init(field: "user_id", value: "\(session.userID)"),
-                .init(field: "login_count", value: "\(session.loginCount)"),
-                .init(field: "active", value: session.active ? "1" : "0"),
-            ])
-        try await valkey.expire(key, after: ttl)
+        try await pool.withConnection { valkey in
+            let key = ValkeyKey("session:\(session.id)")
+            try await valkey.hset(
+                key,
+                data: [
+                    .init(field: "user_id", value: "\(session.userID)"),
+                    .init(field: "login_count", value: "\(session.loginCount)"),
+                    .init(field: "active", value: session.active ? "1" : "0"),
+                ])
+            try await valkey.expire(key, after: ttl)
+        }
     }
 
     func find(_ id: String) async throws -> [String: String] {
-        var fields: [String: String] = [:]
-        for entry in try await valkey.hgetall(ValkeyKey("session:\(id)")) {
-            fields[try entry.key.decode(as: String.self)] = try entry.value.decode(as: String.self)
+        try await pool.withConnection { valkey in
+            var fields: [String: String] = [:]
+            for entry in try await valkey.hgetall(ValkeyKey("session:\(id)")) {
+                fields[try entry.key.decode(as: String.self)] =
+                    try entry.value.decode(as: String.self)
+            }
+            return fields
         }
-        return fields
     }
 
     func recordScore(_ member: String, _ score: Double) async throws {
-        try await valkey.zadd("leaderboard", data: [.init(score: score, member: member)])
+        try await pool.withConnection { valkey in
+            try await valkey.zadd("leaderboard", data: [.init(score: score, member: member)])
+        }
     }
 
     func leaderboard(top n: Int) async throws -> [(String, Double)] {
-        try await valkey.zrevrange("leaderboard", 0, n - 1, withScores: true)
+        try await pool.withConnection { valkey in
+            try await valkey.zrevrange("leaderboard", 0, n - 1, withScores: true)
+        }
     }
 }
 

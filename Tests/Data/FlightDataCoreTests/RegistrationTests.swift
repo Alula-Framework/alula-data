@@ -8,7 +8,7 @@ import FlightDataTesting
 @Suite("register(dataSource:)")
 struct RegistrationTests {
 
-    @Test("the instance form registers pool, scoped connection, and liveness — all name-qualified")
+    @Test("the instance form registers pool and liveness — all name-qualified")
     func registeredBeans() throws {
         let container = Container()
         container.register(dataSource: InMemoryDataSource(poolSize: 2))
@@ -22,10 +22,6 @@ struct RegistrationTests {
         let pool = try #require(descriptor("InMemoryDataSource"))
         #expect(pool.scope == .singleton)
         #expect(pool.qualifier == "primary")
-
-        let lease = try #require(descriptor("ScopedConnection"))
-        #expect(lease.scope == .scoped)
-        #expect(lease.qualifier == "primary")
 
         let liveness = try #require(descriptor("DataSourceLiveness"))
         #expect(liveness.scope == .singleton)

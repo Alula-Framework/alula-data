@@ -150,25 +150,9 @@ extension ValkeyIntegrationSuite {
     /// properties, which only a live pool can prove: scope-bound
     /// checkout, connection identity within a scope, return-to-pool at scope
     /// close, and repositories wired through the real `@Repository`/
-    /// `@Autowired` macro path.
+    /// `@Inject` macro path.
     @Suite("Scoped connections")
     struct ScopingTests {
-        @Test(arguments: TestServer.available)
-        func scopeSharesOneConnection(_ server: TestServer) async throws {
-            try await withValkeyContainer(server) { container, source in
-                try container.withScope { scope in
-                    let a = try container.resolve(SessionRepository.self, in: scope).valkey
-                    let b = try container.resolve(ValkeyConnection.self, qualifier: "primary", in: scope)
-                    let c = try container.resolve(
-                        ScopedConnection<ValkeyDataSource>.self, qualifier: "primary", in: scope
-                    ).connection
-                    #expect(a === b)
-                    #expect(a === c)
-                    #expect(source.activeCheckouts == 1)
-                }
-            }
-        }
-
         @Test(arguments: TestServer.available)
         func scopeCloseReturnsConnectionToPool(_ server: TestServer) async throws {
             try await withValkeyContainer(server) { container, source in
@@ -188,19 +172,6 @@ extension ValkeyIntegrationSuite {
             }
         }
 
-        @Test(arguments: TestServer.available)
-        func distinctScopesGetDistinctConnections(_ server: TestServer) async throws {
-            try await withValkeyContainer(server) { container, source in
-                try container.withScope { outer in
-                    let first = try container.resolve(SessionRepository.self, in: outer).valkey
-                    try container.withScope { inner in
-                        let second = try container.resolve(SessionRepository.self, in: inner).valkey
-                        #expect(first !== second)
-                        #expect(source.activeCheckouts == 2)
-                    }
-                }
-            }
-        }
 
         @Test(arguments: TestServer.available)
         func repositoryStoresAndFindsSessions(_ server: TestServer) async throws {

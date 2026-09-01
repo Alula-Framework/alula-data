@@ -4,18 +4,30 @@ import FlightDataCore
 import FlightDataPostgres
 import Testing
 
-/// against a real server: `@Transactional`'s expansion driving
-/// BEGIN/COMMIT/ROLLBACK — and SAVEPOINTs when nested — on the scope's
+/// Transactions against a real server: Hangar's `repo.transaction { }` driving
+/// BEGIN/COMMIT/ROLLBACK — and SAVEPOINTs when nested — on a leased
 /// connection.
+///
+/// This suite used to cover `@Transactional`'s expansion against the scope's
+/// connection. What is under test is unchanged in substance — commit on
+/// return, roll back on throw, a nested failure rolling back to its savepoint
+/// only — but the boundary is now opened explicitly by the repository (see
+/// `LedgerRepository` in Support/Fixtures.swift) rather than implied by an
+/// annotation plus an ambient coordinator.
+///
+/// Two former tests went with the mechanism they covered: one drove
+/// transaction control by hand through `PostgresTransactionCoordinator`, and
+/// one pinned that an unbound coordinator left `@Transactional` inert. There
+/// is no ambient coordinator left to bind or leave unbound. The
+/// rollback-on-release property the first of those also touched is covered by
+/// `SessionIsolationTests`, which tests `resetOnRelease` directly.
 extension PostgresIntegrationSuite {
-@Suite("@Transactional against Postgres")
+@Suite("Transactions against Postgres")
 struct TransactionIntegrationTests {
     private func seedAccounts(_ container: Container, balances: [String: Int]) async throws {
-        try await container.withPostgresScope { scope in
-            let ledger = try container.resolve(LedgerRepository.self, in: scope)
-            for (id, balance) in balances {
-                try await ledger.seed(Account(id: id, balance: balance))
-            }
+        let ledger = try container.resolve(LedgerRepository.self)
+        for (id, balance) in balances {
+            try await ledger.seed(Account(id: id, balance: balance))
         }
     }
 
@@ -24,18 +36,14 @@ struct TransactionIntegrationTests {
             try await cleanTables(source)
             try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
 
-            try await container.withPostgresScope { scope in
-                let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                try await ledger.transfer(40, from: "checking", to: "savings")
-            }
+            let ledger = try container.resolve(LedgerRepository.self)
+            try await ledger.transfer(40, from: "checking", to: "savings")
 
-            // Visible from a different scope (hence different connection):
-            // the commit really reached the server.
-            try await container.withPostgresScope { scope in
-                let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                #expect(try await ledger.balance(of: "checking") == 60)
-                #expect(try await ledger.balance(of: "savings") == 40)
-            }
+            // Read back on a fresh lease — very likely a different connection
+            // — so the commit reached the server rather than being visible
+            // only to the connection that wrote it.
+            #expect(try await ledger.balance(of: "checking") == 60)
+            #expect(try await ledger.balance(of: "savings") == 40)
         }
     }
 
@@ -44,20 +52,14 @@ struct TransactionIntegrationTests {
             try await cleanTables(source)
             try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
 
+            let ledger = try container.resolve(LedgerRepository.self)
             await #expect(throws: LedgerError.insufficientFunds(account: "deliberate-failure")) {
-                try await container.withPostgresScope { scope in
-                    let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                    try await ledger.transferThenFail(40, from: "checking", to: "savings")
-                }
+                try await ledger.transferThenFail(40, from: "checking", to: "savings")
             }
 
-            try await container.withPostgresScope { scope in
-                let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                #expect(try await ledger.balance(of: "checking") == 100)
-                #expect(try await ledger.balance(of: "savings") == 0)
-                let transfers = try await ledger.allTransfers()
-                #expect(transfers.isEmpty)
-            }
+            #expect(try await ledger.balance(of: "checking") == 100)
+            #expect(try await ledger.balance(of: "savings") == 0)
+            #expect(try await ledger.allTransfers().isEmpty)
         }
     }
 
@@ -66,102 +68,60 @@ struct TransactionIntegrationTests {
             try await cleanTables(source)
             try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
 
-            let applied = try await container.withPostgresScope { scope in
-                let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                // Middle transfer exceeds the balance: its savepoint rolls
-                // back; the outer transaction and sibling transfers commit.
-                return try await ledger.batchTransfer([
-                    (amount: 30, from: "checking", to: "savings"),
-                    (amount: 1_000, from: "checking", to: "savings"),
-                    (amount: 20, from: "checking", to: "savings"),
-                ])
-            }
+            let ledger = try container.resolve(LedgerRepository.self)
+            // The middle transfer exceeds the balance: its savepoint rolls
+            // back while the outer transaction and its siblings commit.
+            let applied = try await ledger.batchTransfer([
+                (amount: 30, from: "checking", to: "savings"),
+                (amount: 1_000, from: "checking", to: "savings"),
+                (amount: 20, from: "checking", to: "savings"),
+            ])
             #expect(applied == 2)
 
-            try await container.withPostgresScope { scope in
-                let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                #expect(try await ledger.balance(of: "checking") == 50)
-                #expect(try await ledger.balance(of: "savings") == 50)
-                let transfers = try await ledger.allTransfers()
-                #expect(transfers.count == 2)
-            }
+            #expect(try await ledger.balance(of: "checking") == 50)
+            #expect(try await ledger.balance(of: "savings") == 50)
+            #expect(try await ledger.allTransfers().count == 2)
         }
     }
 
+    /// Isolation: work inside an open transaction is invisible to anything on
+    /// another connection until it commits.
+    ///
+    /// Worth keeping deliberately. With connections leased per operation
+    /// rather than pinned per request, concurrent work lands on different
+    /// connections more often than it used to, so this property is exercised
+    /// more — not less.
     @Test func uncommittedWorkIsInvisibleToOtherConnections() async throws {
-        try await withPostgresContainer { container, source in
+        struct RollbackProbe: Error {}
+
+        try await withPostgresContainer(poolSize: 4) { container, source in
             try await cleanTables(source)
             try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
 
-            try await container.withPostgresScope { outer in
-                // Hand-driven through the SYNC conformance deliberately (the
-                // existential cast forces the sync witness in this async
-                // context) — keeps the delta-P2 blocking bridge covered now
-                // that async @Transactional methods take the async-native
-                // path (Core delta 14).
-                let coordinator: any FlightTransactionCoordinator =
-                    try container.resolve(PostgresTransactionCoordinator.self)
-                let token = try coordinator.begin()
-                let ledger = try container.resolve(LedgerRepository.self, in: outer)
-                try await ledger.debit(40, from: "checking")
+            let ledger = try container.resolve(LedgerRepository.self)
+            let pool = try container.resolve(PostgresDataSource.self, qualifier: "primary")
 
-                // A second scope = a second pooled connection: must not see
-                // the uncommitted debit.
-                try await container.withScope { observer in
-                    let observed = try container.resolve(LedgerRepository.self, in: observer)
-                    #expect(try await observed.balance(of: "checking") == 100)
+            do {
+                try await pool.withRepo { repo in
+                    try await repo.transaction { tx in
+                        var account = try #require(
+                            try await tx.one(Account.where { $0.id == "checking" }))
+                        account.balance -= 40
+                        try await tx.update(account)
+
+                        // `ledger` takes its own lease — a second connection —
+                        // which must not see the uncommitted debit.
+                        #expect(try await ledger.balance(of: "checking") == 100)
+
+                        // Abandon, so the debit never lands.
+                        throw RollbackProbe()
+                    }
                 }
-
-                coordinator.rollback(token)
-                #expect(try await ledger.balance(of: "checking") == 100)
-            }
-        }
-    }
-
-    @Test func leakedTransactionIsRolledBackOnRelease() async throws {
-        try await withPostgresContainer(poolSize: 2) { container, source in
-            try await cleanTables(source)
-            try await seedAccounts(container, balances: ["checking": 100])
-
-            // A scope dies with an open transaction (begin without
-            // commit/rollback — a torn unit of work). The pool must roll the
-            // connection back before anyone reuses it.
-            try await container.withPostgresScope { scope in
-                let coordinator = try container.resolve(PostgresTransactionCoordinator.self)
-                _ = try await coordinator.begin()   // async-native path (delta 14)
-                let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                try await ledger.debit(99, from: "checking")
+            } catch is RollbackProbe {
+                // Expected: the throw is what triggers the rollback.
             }
 
-            // The rollback rides the release path asynchronously; poll
-            // briefly until the single connection is pooled again.
-            for _ in 0..<50 where source.availableConnections == 0 {
-                try await Task.sleep(for: .milliseconds(20))
-            }
-            #expect(source.availableConnections == 1)
-
-            try await container.withPostgresScope { scope in
-                let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                #expect(try await ledger.balance(of: "checking") == 100)
-            }
-        }
-    }
-
-    @Test func transactionalWithoutCoordinatorBindingIsInert() async throws {
-        // Without withPostgresScope/withPostgresTransactions the task-local
-        // coordinator is Core's no-op — @Transactional must throw loudly
-        // rather than silently skip transaction semantics? No: Core's
-        // documented contract is that the default coordinator is a no-op, so
-        // the method runs untransacted. This pins that behavior so it is a
-        // documented choice, not an accident.
-        try await withPostgresContainer { container, source in
-            try await cleanTables(source)
-            try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
-            try await container.withScope { scope in
-                let ledger = try container.resolve(LedgerRepository.self, in: scope)
-                try await ledger.transfer(10, from: "checking", to: "savings")
-                #expect(try await ledger.balance(of: "savings") == 10)
-            }
+            #expect(try await ledger.balance(of: "checking") == 100, "the debit rolled back")
         }
     }
 }
