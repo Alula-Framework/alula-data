@@ -12,29 +12,38 @@ or writes goes through it. Nothing above this module names a database.
 That narrowness is the design. There is no cross-database query abstraction
 here and there will not be: Postgres and Valkey do not answer the same
 questions, and a layer pretending otherwise ends up serving neither well.
-What *is* shared is connection acquisition, scoping, and liveness — which
+What *is* shared is connection acquisition, leasing, and liveness — which
 genuinely are the same problem everywhere.
 
-## Connections are scoped, not global
+## Connections are leased per operation
 
-``ScopedConnection`` binds a connection to a scope — a request, a job, a
-transaction — and releases it when that scope ends. A component resolves it
-like anything else:
+A repository holds the *pool*, and brackets each operation with
+``DataSource/withConnection(isolation:_:)``. The connection is checked out
+when the operation starts and returned when it ends, on the success and
+error paths alike:
 
 ```swift
-@Repository(scope: .scoped)
+@Repository
 struct OrderRepository {
-    // Generic in its pool, and qualified by the datasource name — the
-    // unqualified, un-parameterized spelling this page used to show does not
-    // compile, because `ScopedConnection` has nothing to bind to without both.
-    @Autowired(qualifier: "primary")
-    var connection: ScopedConnection<PostgresDataSource>
+    @Inject var pool: PostgresDataSource
+
+    func find(_ id: UUID) async throws -> Order? {
+        try await pool.withConnection { connection in
+            // ...
+        }
+    }
 }
 ```
 
-The scope is `FlightCore`'s, so a request-scoped connection is released when
-the request is, whether the handler returned or threw. Nothing has to
-remember to close anything.
+A repository is therefore a singleton, and so is every service holding one.
+A connection used to be a `.scoped` component held for a whole request,
+which made the repository request-scoped and everything above it
+request-scoped too — lifetime propagating up the dependency graph from what
+is really a pooling concern. This is the model Go's `*sql.DB` and Ecto's
+`Repo` both settled on.
+
+Work that must share one connection says so by putting it in one bracket, or
+in a transaction. Two separate operations may land on two connections.
 
 ## Naming a source
 
@@ -57,7 +66,6 @@ reports.
 ### The seam
 
 - ``DataSource``
-- ``ScopedConnection``
 
 ### Naming
 

@@ -14,19 +14,17 @@ import ServiceLifecycle
 /// ])
 /// ```
 ///
-/// `configure(_:)` registers, all qualified by `Name.name`:
+/// `configure(_:)` registers the pool — `PostgresDataSource`, `.singleton`,
+/// qualified by `Name.name` — and its `DataSourceLiveness` probe (via
+/// `register(dataSource:)`, Flight Data Core). For the `primary` datasource
+/// the pool also answers unqualified resolution, so the single-database app
+/// never writes a qualifier.
 ///
-/// 1. the pool — `PostgresDataSource`, `.singleton`, plus the scope-bound
-///    `ScopedConnection<PostgresDataSource>` lease and the
-///    `DataSourceLiveness` probe (via `register(dataSource:)`, Flight Data
-///    Core /);
-/// 2. the raw connection — `PostgresConnection`, `.scoped`, borrowed from
-///    the scope's lease so repositories can say
-///    `@Inject var connection: PostgresConnection`. For the
-///    `primary` datasource it is *also* registered unqualified, so the
-///    single-database app never writes a qualifier;
-/// 3. the transaction coordinator — `PostgresTransactionCoordinator`,
-///    `.singleton`, unqualified alias for `primary` likewise.
+/// That is the whole registration. A `PostgresConnection` is not a
+/// component: a repository holds the pool and leases a connection per
+/// operation through `pool.withConnection { }` or `pool.withRepo { }`.
+/// Transactions are Hangar's `repo.transaction { }`, so there is no
+/// coordinator either.
 ///
 /// `service` is the pool's `run()`: dial at start (Flight Core step 9 —
 /// no request served before the pool is live), replace broken connections

@@ -53,10 +53,8 @@ struct PoolLifecycleIntegrationTests {
             }
             #expect(source.establishedConnections == 2)
 
-            try await container.withScope { scope in
-                let repo = try container.resolve(UserRepository.self, in: scope)
-                #expect(try await repo.find(byEmail: "nobody@example.com") == nil)
-            }
+            let repo = try container.resolve(UserRepository.self)
+            #expect(try await repo.find(byEmail: "nobody@example.com") == nil)
 
             group.cancelAll()
         }

@@ -5,11 +5,13 @@ import FlightDataPostgres
 import Testing
 
 /// Changesets against a real server — now through Hangar (hangar-design
-///): the scoped `Repo` consumes `Changeset` directly, and the
-/// `@Entity` macro generates the `TableModel` metadata one type needs to
-/// serve both queries and changesets.
+///): the `Repo` consumes `Changeset` directly, and the `@Entity` macro
+/// generates the `TableModel` metadata one type needs to serve both queries
+/// and changesets. The repo comes from a `withRepo` bracket, which leases a
+/// connection for the bracket's extent; it used to be a `.scoped` component
+/// resolved out of the ambient scope.
 extension PostgresIntegrationSuite {
-@Suite("Changeset writes through the scoped Repo")
+@Suite("Changeset writes through a leased Repo")
 struct ChangesetIntegrationTests {
     @Test func insertChangesetWritesRow() async throws {
         try await withPostgresContainer { container, source in
@@ -25,8 +27,8 @@ struct ChangesetIntegrationTests {
                 .validate(\.email, .email)
                 .validate(\.lastName, .length(1...80))
 
-            try await container.withScope { scope in
-                let repo = try container.resolve(Repo.self, in: scope)
+            let pool = try container.resolve(PostgresDataSource.self)
+            try await pool.withRepo { repo in
                 try await repo.insert(changeset)
                 let found = try await repo.all(User.where { $0.email == "grace@example.com" })
                 #expect(found.count == 1)
@@ -44,8 +46,8 @@ struct ChangesetIntegrationTests {
                 createdAt: Date(timeIntervalSince1970: 1_600_000_000),
                 profile: nil, nickname: "amazing")
 
-            try await container.withScope { scope in
-                let repo = try container.resolve(Repo.self, in: scope)
+            let pool = try container.resolve(PostgresDataSource.self)
+            try await pool.withRepo { repo in
                 try await repo.insert(original)
 
                 let changeset = Changeset(original: original)
