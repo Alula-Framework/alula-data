@@ -18,9 +18,25 @@ enum Runtime {
         var logger = Logger(label: "flight-migrate")
         logger.logLevel = options.verbose ? .debug : .warning
 
+        // The pool's *background* chatter is a separate stream from the
+        // migration's own, and it is quiet unless asked for. `client.run()`
+        // is started as a child task below and the first lease happens on
+        // the parent immediately after — a child is not guaranteed to have
+        // started by then, so PostgresNIO logs "Trying to lease connection
+        // from `PostgresClient`, but `PostgresClient.run()` hasn't been
+        // called yet" on essentially every invocation. The lease then
+        // succeeds, because the pool queues it. There is no readiness signal
+        // to await (nothing on `PostgresClient` reports that `run()` has
+        // begun), so the choice is between a spurious warning on every run
+        // of a first-party command and keeping the pool's own log to
+        // `--verbose`. A warning that is always there is one people learn to
+        // scroll past, which costs more than it saves.
+        var poolLogger = Logger(label: "flight-migrate.pool")
+        poolLogger.logLevel = options.verbose ? .debug : .error
+
         let client = PostgresClient(
             configuration: clientConfiguration,
-            backgroundLogger: logger
+            backgroundLogger: poolLogger
         )
 
         var migratorConfiguration = FlightMigrator.Configuration()

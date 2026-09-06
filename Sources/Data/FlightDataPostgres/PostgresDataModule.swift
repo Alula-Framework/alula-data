@@ -84,6 +84,13 @@ public final class PostgresDataModule<Name: DataSourceName>: FlightModule {
     public var service: (any Service)? {
         container.map { PostgresPoolService<Name>(container: $0) }
     }
+
+    /// A pool is what everything else borrows from, so it starts first and
+    /// closes last. Without saying so, the order came from however the
+    /// application listed its modules, and the shape every example uses put
+    /// the HTTP transport first — which made the pool close *underneath* a
+    /// server still serving requests.
+    public var serviceShutdownPhase: ServiceShutdownPhase { .infrastructure }
 }
 
 /// The pool's ServiceLifecycle wrapper: resolves the datasource post-freeze

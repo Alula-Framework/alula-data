@@ -242,6 +242,7 @@ public final class PostgresDataSource: DataSource, Sendable {
         // returning before they run would report a pool that still holds
         // connections it is in the middle of letting go.
         state.withLock { $0.phase = .closed }
+        await drainCheckedOutConnections()
         await drainPendingReturns()
 
         let toClose = state.withLock { state -> [PostgresConnection] in
@@ -256,6 +257,44 @@ public final class PostgresDataSource: DataSource, Sendable {
         }
         logger.info("postgres pool closed", metadata: ["datasource": "\(name)"])
     }
+
+    /// Waits, briefly, for connections that are still checked out.
+    ///
+    /// Closing the door is not the same as everyone having left. A request
+    /// still running when shutdown begins holds a connection, and dropping
+    /// the pool's reference to it while it is in use ends with
+    /// PostgresNIO's "PostgresConnection deinitialized before being closed"
+    /// — an assertion failure that takes the process down in a debug build
+    /// and leaks a live connection in a release one.
+    ///
+    /// Correct shutdown ordering is what should prevent this (`FlightCore`'s
+    /// `ServiceShutdownPhase` puts the inbound transport down first), and
+    /// this is the pool's own guard for the cases ordering cannot cover: a
+    /// background task holding a connection, an embedder driving the pool
+    /// directly, an application whose services do not go through Flight's
+    /// bootstrap at all. Bounded, because a shutdown that waits forever for
+    /// a wedged caller is its own outage; past the deadline it says what it
+    /// is giving up on.
+    private func drainCheckedOutConnections() async {
+        let deadline = ContinuousClock.now.advanced(by: Self.shutdownDrainTimeout)
+        while state.withLock({ !$0.checkedOut.isEmpty }) {
+            guard ContinuousClock.now < deadline else {
+                logger.warning(
+                    "shutting down with connections still checked out",
+                    metadata: [
+                        "datasource": "\(name)",
+                        "checked-out": "\(state.withLock { $0.checkedOut.count })",
+                    ])
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    /// How long ``shutdown()`` waits for in-flight work to return its
+    /// connections. Long enough for a request to finish, short enough that a
+    /// wedged one does not hold a deploy open.
+    static let shutdownDrainTimeout = Duration.seconds(10)
 
     /// Waits for outstanding `ROLLBACK`s and `DISCARD ALL`s to finish, so
     /// shutdown does not race the handlers that close their connections.
