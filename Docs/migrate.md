@@ -40,7 +40,7 @@ that wanted only the cache.
 dependencies: [
     .package(
         url: "https://github.com/Flight-Framework/flight-data.git",
-        from: "0.4.0",
+        from: "0.5.0",
         traits: ["Postgres"]          // required — without it the products refuse to build
     ),
 ],
