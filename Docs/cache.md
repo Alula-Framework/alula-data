@@ -26,7 +26,7 @@ resolves none of its dependencies.
 ## Using it
 
 ```swift
-try await bootstrap(configuration: .load(), modules: [
+try await Flight.bootstrap(configuration: .load(), modules: [
     FlightCacheModule.self,          // in-memory by default
     // FlightCacheValkeyModule.self, // …or the Valkey/Redis store
 ])
@@ -35,7 +35,7 @@ try await bootstrap(configuration: .load(), modules: [
 ```swift
 @Service
 final class PricingService {
-    @Autowired var repository: PriceRepository
+    @Inject var repository: PriceRepository
 
     @Cacheable(namespace: "prices", ttl: .seconds(900))
     func price(for productID: ProductID, in region: Region) async throws -> Price {

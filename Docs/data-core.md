@@ -1,11 +1,11 @@
 # Flight Data Core
 
 The store-agnostic parts of persistence for Flight: the `DataSource` seam,
-scope-bound connection checkout, the config/health/lifecycle conventions
+connection leasing and queueing, the config/health/lifecycle conventions
 every store package (Flight Data Postgres, and any future Mongo/Redis/
 Timescale package) follows — and re-exports `Changeset`, the
 validation/dirty-tracking layer, as one neutral result type a driver *may*
-consume. Built on Flight Core's `Container`/`FlightModule`/`Scope`.
+consume. Built on Flight Core's `Container` and `FlightModule`.
 
 Note what "may" is doing there. Flight Data Valkey applies changesets
 directly; Flight Data Postgres does not use them at all, because Hangar sits
@@ -18,15 +18,16 @@ package honors them by *absence*:
 - **No universal query API** — SQL joins, Mongo pipelines, and Redis
   commands are not reconcilable; a lowest-common-denominator would destroy
   Flight Data Postgres's compile-time-checked queries.
-- **No shared transaction abstraction** — `@Transactional` is defined in
-  Flight Data Postgres, on top of the one thing that *is* shared: scope-bound
-  connection checkout.
+- **No shared transaction abstraction** — transactions belong to whatever
+  sits above a driver (Hangar's `repo.transaction { }` for Postgres), on top
+  of the one thing that *is* shared: leasing a connection for the duration of
+  an operation.
 - **No migrations, no ORM concepts, no caching layer**.
 
 ## Build status
 
-`swift test` covers this package with no server at all: scoping, pool
-semantics, queueing and offered connections, config conventions, registration,
+`swift test` covers this package with no server at all: leasing, pool
+semantics, queueing, config conventions, registration,
 module lifecycle, changeset dirty-tracking and validation, the driver boundary,
 and the `DataSourceConformance` suite run against the reference driver. Builds
 clean under strict Swift 6 concurrency.
@@ -41,7 +42,7 @@ Dependencies are Flight Core, swift-changeset, and swift-service-lifecycle.
 
 | Product | Contents |
 |---|---|
-| `FlightDataCore` | `DataSource` (the entire cross-store contract: `checkout`/`release`, `checkout(waitingUpTo:)`, derived `withConnection`, `ping`), `ConnectionWaiters` (the parked-caller machinery every queueing pool shares), `PendingConnections` (an async caller's connection offered to the scope it is about to open), `ScopedConnection` (the `.scoped` lease component), `Container.register(dataSource:)`, `DataSourceName`/`PrimaryDataSource`, `DataSourceSettings` + `DataSourceConfigKey` (key conventions), `DataSourceLiveness` (the Actuator surface), `DataSourceError` — plus the changeset layer: `Changeset<Model>`, `ValidationRule`/`CrossFieldRule`, `ValidatedChanges`/`ChangesetError`, and the `TableModel`/`TableColumn` metadata seam |
+| `FlightDataCore` | `DataSource` (the entire cross-store contract: `checkout`/`release`, `checkout(waitingUpTo:)`, derived `withConnection`, `ping`), `ConnectionWaiters` (the parked-caller machinery every queueing pool shares), `Container.register(dataSource:)`, `DataSourceName`/`PrimaryDataSource`, `DataSourceSettings` + `DataSourceConfigKey` (key conventions), `DataSourceLiveness` (the Actuator surface), `DataSourceError` — plus the changeset layer: `Changeset<Model>`, `ValidationRule`/`CrossFieldRule`, `ValidatedChanges`/`ChangesetError`, and the `TableModel`/`TableColumn` metadata seam |
 | `FlightDataTesting` | `InMemoryDataSource` (a `DataSource` backed by nothing — real pool semantics, no store), `InMemoryDataModule<Name>` (the reference store module), `TestContainer`, and `InMemoryConnection.apply(_:to:)` (the changeset design's driver translation, in miniature) |
 
 ## Using it
@@ -67,10 +68,10 @@ public final class PostgresDataModule<Name: DataSourceName>: FlightModule {
 }
 ```
 
-`register(dataSource:name:)` registers three components, all qualified by the
-datasource's name: the pool (`.singleton`), the scope-bound connection
-(`ScopedConnection<D>`, `.scoped`), and the liveness probe
-(`DataSourceLiveness`, for Actuator).
+`register(dataSource:name:)` registers two components, both qualified by the
+datasource's name: the pool (`.singleton`) and the liveness probe
+(`DataSourceLiveness`, `.singleton`, for Actuator). A connection is
+deliberately not a component — it is leased for one operation.
 
 Named datasources are module *type* instantiations, exactly like
 `FlightWebModule<Transport>`:
@@ -88,7 +89,7 @@ datasource:
 ```swift
 enum Analytics: DataSourceName { static let name = "analytics" }
 
-try await bootstrap(configuration: .load(), modules: [
+try await Flight.bootstrap(configuration: .load(), modules: [
     FlightWebModule<FlightTransport>.self,
     PostgresDataModule<PrimaryDataSource>.self,
     PostgresDataModule<Analytics>.self,
@@ -96,21 +97,22 @@ try await bootstrap(configuration: .load(), modules: [
 ])
 ```
 
-A repository holds its scope's connection through the lease, reached from its
-factory via the ambient scope (Flight Core delta 11):
+A repository holds the **pool** and brackets each operation:
 
 ```swift
-container.register(UserRepository.self, scope: .scoped, stereotype: .repository) { c in
-    UserRepository(lease: try c.resolveInActiveScope(
-        ScopedConnection<PostgresDataSource>.self, qualifier: "primary"))
+container.register(UserRepository.self, scope: .singleton, stereotype: .repository) { c in
+    UserRepository(pool: try c.resolve(PostgresDataSource.self, qualifier: "primary"))
 }
 ```
 
-The property this buys: "request-scoped connection" is not a feature this
-package implements — it is what falls out when Flight Web opens a `Scope` per
-request and the connection is registered `.scoped`. A job runner or CLI
-command gets the same correct lifetime, and none of the packages know about
-each other.
+The property this buys: a connection is held for exactly as long as the query
+that needs it, and nothing above it inherits that lifetime. A repository is a
+singleton, so a service holding one is a singleton too, and a handler that
+does no database work at no point holds a connection. This is what replaced a
+`.scoped` connection component: that shape made "request-scoped" fall out of
+Flight Web opening a `Scope` per request, but it also propagated a pooling
+concern up the object graph, and it pinned one connection per open WebSocket
+for the socket's whole life.
 
 Testing needs no live database and no `ServiceGroup`:
 
@@ -146,24 +148,24 @@ So there are two checkouts:
 
 | | Waits? | Who calls it |
 |---|---|---|
-| `checkout()` | No — throws the moment nothing is free | The synchronous `ScopedConnection` factory, and a transaction coordinator's `begin()` |
+| `checkout()` | No — throws the moment nothing is free | A synchronous caller that has no way to await |
 | `checkout(waitingUpTo:)` | Yes, to the timeout | `withConnection`, and anything else that can await |
 
-`withConnection` is defined on the waiting one, so most callers queue without
-doing anything. A store with no native wake path still queues: the protocol
-ships a polling default, and both drivers here override it with a real handoff
-(`ConnectionWaiters`, which is shared rather than written twice).
+`withConnection` is defined on the waiting one, so every ordinary caller
+queues without doing anything — and since a connection is now leased for one
+operation rather than for a whole scope, that is all of them. A store with no
+native wake path still queues: the protocol ships a polling default, and both
+drivers here override it with a real handoff (`ConnectionWaiters`, which is
+shared rather than written twice).
 
-The synchronous factory is the one place that still fails fast, and it has an
-escape: an async caller that wants a *scope's* connection queued takes one up
-front and offers it through `PendingConnections.offering(_:connection:returning:)`,
-which is what `withPostgresTransactions(in:acquiring: .waiting(timeout:))` does.
+`checkout()` remains as the primitive the waiting form is built on, and for a
+synchronous caller that genuinely cannot await. It is no longer on the request
+path: the synchronous scoped-connection factory that used to need it is gone.
 
-Sizing still matters. Every scope holds its connection for its whole lifetime,
-so one slow handler occupies a slot for as long as it runs — queueing turns
-that into latency rather than errors, which is better but not free. Watch
-`waitingCallers.peak`: a pool that is too small says so there before it says so
-as timeouts.
+Sizing still matters. A slow query occupies a slot for as long as it runs —
+queueing turns that into latency rather than errors, which is better but not
+free. Watch `waitingCallers.peak`: a pool that is too small says so there
+before it says so as timeouts.
 
 ## Testing a driver
 
@@ -245,9 +247,9 @@ state; nil-ness is exclusively `validateRequired`'s job.
 
 | # | Delta | Why |
 |---|-------|-----|
-| D1 | `DataSource` gains `checkout()`/`release(_:)`; `withConnection` becomes a derived default on top | Scope-bound checkout runs inside Core's *synchronous* component factories; an async-only `withConnection` cannot be bridged from a synchronous factory without blocking a cooperative-pool thread (deadlock on a single-threaded executor). This is the contract's own escape hatch — "extend it deliberately" — invoked once. |
-| D2 | The `.scoped` component is `ScopedConnection<D>` (a lease class), not the raw `Connection` | Core's `Scope` has no close hooks — close drops instances ("eligible for cleanup", Core). Return-to-pool therefore rides ARC: the lease's `deinit` releases the connection the moment the scope's storage drops it. A raw connection value (possibly a struct — Core has no opinion about the type) has nowhere to hang that behavior. |
-| D3 | Flight Core delta 11 (`Scope.active` task-local, `resolveInActiveScope`) | The gap predicted the "second consumer" would find: factories receive only the `Container`, so a scoped repository had no path to the scope's connection. Fixed in Core, where it belongs — it is Scope semantics, not data semantics. Recorded as Core delta 11 with its own test suite. |
+| D1 | `DataSource` gains `checkout()`/`release(_:)`; `withConnection` becomes a derived default on top | Scope-bound checkout used to run inside Core's *synchronous* component factories, and an async-only `withConnection` cannot be bridged from one without blocking a cooperative-pool thread (deadlock on a single-threaded executor). The synchronous factory is gone (see D2), so the primitive no longer has that caller — but the split it created is still the right shape: a primitive that cannot wait, and a queueing form built on it. |
+| D2 | ~~The `.scoped` component is `ScopedConnection<D>` (a lease class), not the raw `Connection`~~ | **Reversed.** Return-to-pool used to ride ARC, because Core's `Scope` has no close hooks: the lease's `deinit` released the connection when the scope's storage dropped it. That made every repository holding a connection request-scoped, and every service holding such a repository request-scoped in turn — a pooling concern propagating lifetime up the object graph — and it pinned one connection per open WebSocket for the socket's whole life. A connection is not a component any more; `withConnection` brackets the lease, and the bracket is the close hook. |
+| D3 | ~~Flight Core delta 11 (`Scope.active` task-local, `resolveInActiveScope`)~~ | **No longer needed here.** It existed so a scoped repository's factory could reach the scope's connection, factories receiving only the `Container`. Repositories hold the pool now, which a plain `resolve` supplies. The Core API remains for anyone who wants it; nothing in this package uses it. |
 | D4 | `register(dataSource:)` has instance *and* factory forms, plus `name:` | Modules cannot read `Configuration` during `configure` (resolution begins at `freeze()`, Core), so the "construct the DataSource from config" step happens inside a registered factory. The instance form remains for tests and hand-wiring. |
 | D5 | `DataSourceLiveness` component per datasource | The requirement was that stores "register a liveness check surfaced by Actuator", with no mechanism named. A qualified component wrapping `ping()`, discoverable via `DataSourceLiveness.all(in:)` through Core introspection, is that mechanism — Actuator needs zero store knowledge. |
 | D6 | `TestContainer` duplicated from `FlightWebTesting` | A data test must not need the web package. Identical API; qualify by module if a target imports both. Follow-up: hoist into a shared flight-testing package. |

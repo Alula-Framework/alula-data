@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/flight.git",
       "state" : {
-        "revision" : "8ca29b114969c37c1451aee0e1cc1e2d6f9445af",
-        "version" : "0.9.1"
+        "revision" : "a6ee8bc287cc1e7bc3e979d09a51f4b91edd1afd",
+        "version" : "0.14.0"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/swift-changeset.git",
       "state" : {
-        "revision" : "5cca26f9096296db8624f8eabfc33f609c032b29",
-        "version" : "0.1.0"
+        "revision" : "978c9b504072760bc002f793acd041930d628739",
+        "version" : "0.2.0"
       }
     },
     {

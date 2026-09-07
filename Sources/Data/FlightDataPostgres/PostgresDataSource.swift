@@ -667,10 +667,29 @@ public final class PostgresDataSource: DataSource, Sendable {
         }
     }
 
-    // MARK: - Transaction bookkeeping (internal seam for the coordinator)
+    // MARK: - Transaction bookkeeping (currently unwired — see below)
 
     /// Marks `connection` as carrying an open transaction, so a lease that
     /// leaks mid-transaction is rolled back before reuse (see `release`).
+    ///
+    /// **Nothing calls this today.** `PostgresTransactionCoordinator` did, and
+    /// it went away with `@Transactional`: transactions are now Hangar's
+    /// `repo.transaction { }`, which issues `BEGIN` over the connection
+    /// without telling the pool. So `openTransactions` stays empty and
+    /// `release`'s `.rollbackFirst` path is unreachable.
+    ///
+    /// What holds the guarantee up in its place is `resetOnRelease`: a
+    /// connection returned mid-transaction fails `DISCARD ALL` — Postgres
+    /// refuses it inside a transaction block — and `resetAndRepool` drops a
+    /// connection whose reset failed rather than reusing it. That is the
+    /// default, and it covers the leak.
+    ///
+    /// With `datasource.<name>.reset_on_release: false` it is *not* covered:
+    /// a connection returned between `BEGIN` and `COMMIT` goes back to the
+    /// pool with the transaction open, and the next borrower inherits it.
+    /// Kept rather than deleted because re-wiring it is what closing that
+    /// hole looks like — Hangar would have to tell the pool, which needs a
+    /// seam it does not have yet.
     func markTransactionOpen(_ connection: PostgresConnection) {
         state.withLock { _ = $0.openTransactions.insert(ObjectIdentifier(connection)) }
     }

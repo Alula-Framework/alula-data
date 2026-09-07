@@ -1,11 +1,14 @@
 import Logging
 import Synchronization
 
-/// The seam the expansions target — Flight Cache's analogue of Core's
-/// `FlightTransactions`: Flight Core has no ambient container and a body
-/// macro cannot add members, so generated code reaches runtime state
+/// The seam the expansions target: Flight Core has no ambient container and
+/// a body macro cannot add members, so generated code reaches runtime state
 /// through this process-level access point, named fully qualified
 /// (`FlightCache.FlightCaches.current`) so it resolves in any client module.
+///
+/// Core used to solve the same problem the same way, with `FlightTransactions`
+/// behind `@Transactional`; both went with the composition migration, and this
+/// is now the only instance of the shape.
 ///
 /// Three layers, first match wins:
 ///

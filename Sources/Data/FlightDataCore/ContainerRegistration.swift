@@ -2,7 +2,7 @@ import FlightCore
 
 extension Container {
     /// Registers one named datasource — called by each store's
-    /// `FlightModule` from `configure(_:)`. Three components, all qualified by
+    /// `FlightModule` from `configure(_:)`. Two components, both qualified by
     /// `name`:
     ///
     /// 1. **The pool** — `D` as `.singleton`. `factory` runs at `freeze()`
@@ -58,7 +58,7 @@ extension Container {
     /// Instance form, for callers that already hold a constructed pool —
     /// tests wiring an `InMemoryDataSource` by hand, or a module whose
     /// settings don't come from `Configuration`. Registers exactly the same
-    /// three components.
+    /// two components.
     public func register<D: DataSource>(
         dataSource: D,
         name: String = PrimaryDataSource.name

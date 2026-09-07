@@ -12,11 +12,11 @@ specifications. What Flight builds is the seam:
 | Piece | Contents |
 |---|---|
 | `ValkeyDataSource` | The pool, behind Flight Data Core's `DataSource` seam: synchronous checkout/release, eager dial at service start, broken-connection replacement, `PING` liveness |
-| `ValkeyDataModule<Name>` | module wiring: pool + scoped `ValkeyConnection` lease + `DataSourceLiveness`, one generic instantiation per named datasource |
+| `ValkeyDataModule<Name>` | module wiring: the pool + `DataSourceLiveness`, one generic instantiation per named datasource |
 | `ValkeyDataSourceURL` | URL parsing — `valkey://` and `redis://` are exact synonyms (`valkeys://`/`rediss://` for TLS), auth, database number |
-| `multi { … }` |: `MULTI`/`EXEC` under its own honest name — an atomic batch, deliberately **not** `@Transactional` |
+| `multi { … }` | `MULTI`/`EXEC` under its own honest name — an atomic batch, deliberately **not** called a transaction |
 | `command("…", …)` | escape hatch: raw commands, outside the compatibility guarantee |
-| `apply(_:to:)` |: changeset `ValidatedChanges` → `HSET` of exactly the changed fields (`HDEL` for nil), same neutral seam the Postgres driver consumes |
+| `apply(_:to:)` | changeset `ValidatedChanges` → `HSET` of exactly the changed fields (`HDEL` for nil), same neutral seam the Postgres driver consumes |
 
 The typed command surface (`hset`, `expire`, `zadd`, …) is the **driver's
 own** generated `ValkeyClientProtocol` extension — this package adds only two
@@ -32,8 +32,8 @@ one, and most of the value here is in what runs against a real server.
 The integration suites run against **both a real Valkey 8 and a real Redis 7**,
 which is what keeps the compatibility claim honest rather than aspirational:
 pool lifecycle, broken-connection replacement and outage recovery, session
-reset on release, the queueing checkout, scope-bound checkout through the real
-`@Repository`/`@Autowired` macro path, the typed surface, `multi` semantics
+reset on release, the queueing checkout, per-operation leasing through the real
+`@Repository`/`@Inject` macro path, the typed surface, `multi` semantics
 (including the no-rollback per-slot failure test), the raw-command hatch,
 changeset apply, and the shared `DataSourceConformance` contract.
 
@@ -70,7 +70,7 @@ it clamps to one millisecond instead.
 ## Using it
 
 ```swift
-try await bootstrap(configuration: .load(), modules: [
+try await Flight.bootstrap(configuration: .load(), modules: [
     ValkeyDataModule<PrimaryDataSource>.self,
 ])
 ```
@@ -90,27 +90,36 @@ said `valkey:` for a while, which is not a name any module reads, so copying
 it produced a bootstrap failure about a missing `datasource.primary.url`.
 
 ```swift
-@Repository(scope: .scoped)
+@Repository
 struct SessionRepository {
-    @Autowired var valkey: ValkeyConnection
+    @Inject var pool: ValkeyDataSource
 
     func store(_ session: Session, ttl: Duration) async throws {
-        try await valkey.hset("session:\(session.id)", data: session.fields)
-        try await valkey.expire("session:\(session.id)", after: ttl)
+        try await pool.withConnection { valkey in
+            try await valkey.hset("session:\(session.id)", data: session.fields)
+            try await valkey.expire("session:\(session.id)", after: ttl)
+        }
     }
 
     func leaderboard(top n: Int) async throws -> [(String, Double)] {
-        try await valkey.zrevrange("leaderboard", 0, n - 1, withScores: true)
+        try await pool.withConnection { valkey in
+            try await valkey.zrevrange("leaderboard", 0, n - 1, withScores: true)
+        }
     }
 }
 ```
 
-Atomic batches (not transactions —):
+The repository is a `.singleton` holding the pool; `withConnection` leases a
+connection for the operation and returns it when the closure ends.
+
+Atomic batches (not transactions):
 
 ```swift
-try await valkey.multi { batch in
-    batch.incr("counter")
-    batch.expire("counter", after: .seconds(3600))
+try await pool.withConnection { valkey in
+    try await valkey.multi { batch in
+        batch.incr("counter")
+        batch.expire("counter", after: .seconds(3600))
+    }
 }   // atomic batch — NOT a rollback-capable transaction
 ```
 
@@ -228,8 +237,8 @@ refinement of) the design doc, in its spirit.
 
 ## Boundary notes
 
-No caching abstraction, no PubSub, no migrations, no `@Transactional` (the
-module registers **no** transaction coordinator — asserted by test), no
-vendor-specific commands in the guaranteed surface, no RediStack shim, no
-cluster topology management.
+No caching abstraction, no PubSub, no migrations, no rollback-capable
+transaction (`multi` is a batch, and the module registers nothing that
+pretends otherwise), no vendor-specific commands in the guaranteed surface,
+no RediStack shim, no cluster topology management.
 
