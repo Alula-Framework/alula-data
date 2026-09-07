@@ -1,13 +1,13 @@
 {
-  "originHash" : "19647376eb9bc23ce472ab85ac9ef51df3026ff85d833768ca51306ccf868ce9",
+  "originHash" : "efc4f4355ea1ad69a422c3d9ba6d533ee61b4c1d77e1401ced567f2963e6f4e2",
   "pins" : [
     {
       "identity" : "flight",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/flight.git",
       "state" : {
-        "revision" : "093cd554242ac7ca6051268734e352eecbadacf5",
-        "version" : "0.13.0"
+        "revision" : "a6ee8bc287cc1e7bc3e979d09a51f4b91edd1afd",
+        "version" : "0.14.0"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/hangar.git",
       "state" : {
-        "revision" : "23180ae9db79cf1a54d45ad05c79a13804a8f46b",
-        "version" : "0.3.0"
+        "revision" : "576509da047e1a91fcdf1cd0cdd3cd25c5957328",
+        "version" : "0.5.0"
       }
     },
     {
