@@ -27,30 +27,38 @@ produced a bootstrap failure about a missing `datasource.primary.url`.
 a typo is a startup failure with a message rather than a connection error on
 the first request.
 
-## Transactions are declarative
+## Transactions are a bracket
 
-``PostgresTransactionCoordinator`` implements `FlightCore`'s transaction
-seam, so `@Transactional` works on any component method:
+Hangar owns transactions. ``DataSource/withRepo(isolation:_:)`` leases a
+connection and hands you a `Repo` bound to it; `repo.transaction { }` is the
+unit of work:
 
 ```swift
-@Service
-final class OrderService: Sendable {
-    @Transactional
+@Repository
+struct OrderRepository {
+    @Inject var pool: PostgresDataSource
+
     func place(_ input: OrderInput) async throws -> Order {
-        let order = try await orders.insert(...)
-        try await lines.insert(...)      // same connection, same transaction
-        return order
+        try await pool.withRepo { repo in
+            try await repo.transaction { tx in
+                let order = try await tx.insert(...)
+                try await tx.insert(...)   // same connection, same transaction
+                return order
+            }
+        }
     }
 }
 ```
 
 Every query inside runs on one connection. Throwing rolls back. Nesting
 becomes a savepoint, so an inner failure can be handled without discarding
-the outer work.
+the outer work — Hangar tracks the depth, which is what makes the nesting
+correct.
 
-The connection binding is scope-based, not thread-based, and it does not
-cross `Task.detached` — a background job launched from inside a transaction
-must not silently become durable when that transaction commits.
+This replaces `@Transactional` and a `PostgresTransactionCoordinator` that
+found the connection through the ambient scope. The extent of a transaction
+is now visible in the code that opens it, rather than inferred from an
+annotation and a scope you cannot see.
 
 ## Migrations
 
@@ -65,11 +73,6 @@ database. `flight migrate` is the command-line side.
 - ``PostgresDataModule``
 - ``PostgresDataSource``
 - ``PostgresDataSourceURL``
-
-### Transactions
-
-- ``PostgresTransactionCoordinator``
-- ``PostgresTransactionError``
 
 ### Migrations
 

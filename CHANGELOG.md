@@ -4,6 +4,71 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-07
+
+Repositories hold the pool, and three defects found by building an
+application on this package.
+
+### Breaking
+
+- **A repository holds the pool and leases a connection per operation.** The
+  `.scoped` `PostgresConnection`, the `PostgresTransactionCoordinator` and the
+  `.scoped` Hangar `Repo` are gone, and so is `@Transactional` (removed in
+  flight 0.13.0). `pool.withRepo { repo in … }` is the bracket, and a
+  transaction is Hangar's `repo.transaction { }` inside it — its extent
+  visible in the code that opens it rather than inferred from an annotation
+  and a scope you cannot see. Carries one silent behaviour change: per-request
+  pinning gave two queries in one request an incidental consistent snapshot,
+  and per-operation leasing drops that outside an explicit bracket.
+
+- **Requires flight 0.14.0, hangar 0.5.0 and swift-changeset 0.2.0.** The
+  hangar bump is what makes optimistic locking and nested changesets reachable
+  at all — hangar's own cap held the whole stack at changesets 0.1.x.
+
+### Fixed
+
+- **`SIGTERM` during an in-flight request could close the pool underneath it.**
+  `PostgresDataModule` now declares `ServiceShutdownPhase.infrastructure`, so
+  the pool starts before the services that borrow from it and closes after
+  them. Without that ordering the crash was
+  "PostgresConnection deinitialized before being closed" and a dropped
+  response — on every rolling deploy that restarted under load.
+  `PostgresDataSource.shutdown()` additionally waits, bounded, for connections
+  that are still checked out, and warns rather than trapping if they never
+  come back: ordering cannot cover an embedder driving the pool directly.
+
+- **A failed migration now says why.** `MigrationError` interpolated the
+  underlying error, and PostgresNIO redacts its own description, so an
+  operator mid-deploy was told which statement failed and then handed
+  "Generic description to prevent accidental leakage of sensitive data. For
+  debugging details, use `String(reflecting: error)`". The server's diagnostic
+  fields — severity, SQLSTATE, message, detail, hint, position — carry no
+  bound values and are what was wanted:
+
+      underlying error: ERROR [42P01] relation "no_such_table" does not exist
+        position: 13
+
+- **`migrate` no longer warns on every run.** `Runtime.withMigrator` starts
+  `client.run()` as a child task and leases from the parent immediately after,
+  so PostgresNIO logged "Trying to lease connection from `PostgresClient`, but
+  `PostgresClient.run()` hasn't been called yet" on essentially every
+  invocation. The lease succeeds — the pool queues it — and there is no
+  readiness signal to await, so the pool's own log now goes to `--verbose`
+  instead of to everyone.
+
+### Documentation
+
+- What a streamed export costs: `repo.stream` borrows the connection for its
+  whole closure, so a client reading a CSV at 20 KB/s holds one for the length
+  of the download, and enough of them hold the pool. Three mitigations, in the
+  order they are usually worth reaching for.
+
+### Internal
+
+- CI calls flight-cli's template workflow with the commit under review, so a
+  breaking change here fails on its own pull request rather than in a new
+  user's first ten minutes.
+
 ## [0.4.0] - 2026-08-29
 
 A source audit of every product in `Sources/` found two critical defects, a

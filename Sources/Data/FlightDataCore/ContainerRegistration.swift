@@ -9,21 +9,24 @@ extension Container {
     ///    (Flight Core's eager singleton construction), which is where
     ///    it reads `Configuration` — module `configure` bodies run during the
     ///    registration phase, where resolution is not yet legal.
-    /// 2. **The scope-bound connection** — `ScopedConnection<D>` as
-    ///    `.scoped`. First resolution within a `Scope` checks a connection
-    ///    out of the pool; every further resolution in that scope yields the
-    ///    same one; scope close returns it. A repository factory reaches
-    ///    it with `resolveInActiveScope` (Flight Core delta 11):
-    ///
-    ///    ```swift
-    ///    container.register(UserRepository.self, scope: .scoped, stereotype: .repository) { c in
-    ///        UserRepository(lease: try c.resolveInActiveScope(
-    ///            ScopedConnection<PostgresDataSource>.self, qualifier: "primary"))
-    ///    }
-    ///    ```
-    ///
-    /// 3. **The liveness probe** — `DataSourceLiveness` as `.singleton`,
+    /// 2. **The liveness probe** — `DataSourceLiveness` as `.singleton`,
     ///    wrapping the pool's `ping()` for Actuator.
+    ///
+    /// A connection is deliberately **not** a component. It is leased for the
+    /// duration of one operation and returned when that operation ends, so a
+    /// repository holds the *pool* and brackets each query:
+    ///
+    /// ```swift
+    /// @Repository final class UserRepository {
+    ///     @Inject var pool: PostgresDataSource        // singleton
+    ///
+    ///     func find(_ id: UUID) async throws -> User? {
+    ///         try await pool.withConnection { connection in
+    ///             try await Repo(connection: connection).one(User.where { $0.id == id })
+    ///         }
+    ///     }
+    /// }
+    /// ```
     ///
     /// Names are always explicit qualifiers, including `"primary"` — one
     /// convention whether an app has one datasource or five; resolution
@@ -35,22 +38,14 @@ extension Container {
     ) {
         register(type, qualifier: name, scope: .singleton, factory: factory)
 
-        register(ScopedConnection<D>.self, qualifier: name, scope: .scoped) { container in
-            let source = try container.resolve(D.self, qualifier: name)
-            // A caller that could await may have already taken a connection
-            // out of the pool for this scope — waiting for one rather than
-            // failing when the pool was full. This factory is synchronous and
-            // cannot wait, so it takes that connection when one is on offer
-            // and falls back to the non-waiting checkout otherwise.
-            if let waited: D.Connection = PendingConnections.take(datasource: name) {
-                return ScopedConnection(datasourceName: name, connection: waited, source: source)
-            }
-            return ScopedConnection(
-                datasourceName: name,
-                connection: try source.checkout(),
-                source: source
-            )
-        }
+        // There used to be a `.scoped` `ScopedConnection<D>` lease here, held
+        // for a whole request and returned by ARC when the scope dropped it.
+        // It made every repository holding a connection request-scoped, and
+        // every service holding such a repository request-scoped in turn —
+        // lifetime propagating up the graph from a pooling concern. It also
+        // required `PendingConnections`, because a synchronous factory cannot
+        // queue for a busy pool. `withConnection` is async and queues
+        // natively, so both are gone.
 
         register(DataSourceLiveness.self, qualifier: name, scope: .singleton) { container in
             let source = try container.resolve(D.self, qualifier: name)

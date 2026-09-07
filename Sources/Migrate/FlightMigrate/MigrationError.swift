@@ -1,4 +1,5 @@
 import Foundation
+import PostgresNIO
 
 /// Errors thrown by `FlightMigrator`. Messages are written for the operator at 2 a.m.:
 /// they say what happened, what state the database is in, and what to do next.
@@ -96,7 +97,7 @@ public enum MigrationError: Error, CustomStringConvertible, LocalizedError, Send
             case .commit:
                 message += " (its statements succeeded, but the final COMMIT failed)"
             }
-            message += "\nunderlying error: \(underlying)\n\n"
+            message += "\nunderlying error: \(Self.describe(underlying))\n\n"
             if transactional {
                 message += """
                     The transaction was rolled back: the database is unchanged by this migration \
@@ -144,6 +145,32 @@ public enum MigrationError: Error, CustomStringConvertible, LocalizedError, Send
         case .invalidRequest(let reason):
             return reason
         }
+    }
+
+    /// What actually went wrong, for the operator this file's own header
+    /// says these messages are written for.
+    ///
+    /// PostgresNIO redacts `PSQLError.description` on purpose — it can carry
+    /// bound parameters — so interpolating the error printed "Generic
+    /// description to prevent accidental leakage of sensitive data. For
+    /// debugging details, use `String(reflecting: error)`" and nothing else.
+    /// A failed migration then said which statement failed but never why:
+    /// no "relation does not exist", no constraint name, no position. The
+    /// server's own diagnostic fields are the part worth showing, and they
+    /// do not include the binds.
+    static func describe(_ error: any Error) -> String {
+        guard let psql = error as? PSQLError, let server = psql.serverInfo else {
+            return "\(error)"
+        }
+        var parts: [String] = []
+        if let severity = server[.severity] ?? server[.localizedSeverity] { parts.append(severity) }
+        if let sqlState = server[.sqlState] { parts.append("[\(sqlState)]") }
+        if let message = server[.message] { parts.append(message) }
+        var rendered = parts.joined(separator: " ")
+        if let detail = server[.detail] { rendered += "\n  detail: \(detail)" }
+        if let hint = server[.hint] { rendered += "\n  hint: \(hint)" }
+        if let position = server[.position] { rendered += "\n  position: \(position)" }
+        return rendered.isEmpty ? "\(error)" : rendered
     }
 
     public var errorDescription: String? { description }

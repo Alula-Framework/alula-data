@@ -144,61 +144,50 @@ extension ValkeyIntegrationSuite {
     }
 }
 
-// MARK: - Scope-bound connections
+// MARK: - Leased connections
 
 extension ValkeyIntegrationSuite {
-    /// properties, which only a live pool can prove: scope-bound
-    /// checkout, connection identity within a scope, return-to-pool at scope
-    /// close, and repositories wired through the real `@Repository`/
-    /// `@Autowired` macro path.
-    @Suite("Scoped connections")
-    struct ScopingTests {
+    /// The properties only a live pool can prove: a connection is leased for
+    /// one operation and returned when it ends, a bracket holding several
+    /// commands takes one lease, and repositories are wired through the real
+    /// `@Repository`/`@Inject` macro path.
+    ///
+    /// These were scope-bound assertions — checkout on resolve, return at
+    /// scope close. Resolving a repository now takes nothing from the pool,
+    /// so the boundary they describe moved to the operation.
+    @Suite("Leased connections")
+    struct LeasingTests {
         @Test(arguments: TestServer.available)
-        func scopeSharesOneConnection(_ server: TestServer) async throws {
+        func operationReturnsConnectionToPool(_ server: TestServer) async throws {
             try await withValkeyContainer(server) { container, source in
-                try container.withScope { scope in
-                    let a = try container.resolve(SessionRepository.self, in: scope).valkey
-                    let b = try container.resolve(ValkeyConnection.self, qualifier: "primary", in: scope)
-                    let c = try container.resolve(
-                        ScopedConnection<ValkeyDataSource>.self, qualifier: "primary", in: scope
-                    ).connection
-                    #expect(a === b)
-                    #expect(a === c)
-                    #expect(source.activeCheckouts == 1)
-                }
-            }
-        }
+                let repo = try container.resolve(SessionRepository.self)
+                #expect(source.activeCheckouts == 0, "resolving a repository takes nothing")
 
-        @Test(arguments: TestServer.available)
-        func scopeCloseReturnsConnectionToPool(_ server: TestServer) async throws {
-            try await withValkeyContainer(server) { container, source in
-                try container.withScope { scope in
-                    _ = try container.resolve(SessionRepository.self, in: scope)
-                    #expect(source.activeCheckouts == 1)
-                }
-                #expect(source.activeCheckouts == 0)
+                _ = try await repo.find("missing")
+                #expect(source.activeCheckouts == 0, "the operation gave its connection back")
 
                 // The returned connection is reused, not replaced.
                 let before = source.totalCheckouts
-                try container.withScope { scope in
-                    _ = try container.resolve(SessionRepository.self, in: scope)
-                }
-                #expect(source.totalCheckouts == before + 1)
+                _ = try await repo.find("missing")
+                #expect(source.totalCheckouts == before + 1, "one lease per operation")
                 #expect(source.establishedConnections == source.poolSize)
             }
         }
 
         @Test(arguments: TestServer.available)
-        func distinctScopesGetDistinctConnections(_ server: TestServer) async throws {
+        func oneBracketIsOneLease(_ server: TestServer) async throws {
             try await withValkeyContainer(server) { container, source in
-                try container.withScope { outer in
-                    let first = try container.resolve(SessionRepository.self, in: outer).valkey
-                    try container.withScope { inner in
-                        let second = try container.resolve(SessionRepository.self, in: inner).valkey
-                        #expect(first !== second)
-                        #expect(source.activeCheckouts == 2)
-                    }
+                let pool = try container.resolve(ValkeyDataSource.self)
+                let before = source.totalCheckouts
+
+                try await pool.withConnection { valkey in
+                    _ = try await valkey.get(ValkeyKey("absent"))
+                    _ = try await valkey.get(ValkeyKey("absent"))
+                    #expect(source.activeCheckouts == 1)
                 }
+
+                #expect(source.totalCheckouts == before + 1, "two commands, one lease")
+                #expect(source.activeCheckouts == 0)
             }
         }
 
@@ -206,32 +195,28 @@ extension ValkeyIntegrationSuite {
         func repositoryStoresAndFindsSessions(_ server: TestServer) async throws {
             // The design doc's repository, end to end.
             try await withValkeyContainer(server) { container, source in
-                try await container.withScope { scope in
-                    let repo = try container.resolve(SessionRepository.self, in: scope)
-                    let session = Session(id: "s1", userID: 7, ipAddress: nil, loginCount: 3)
-                    try await repo.store(session, ttl: .seconds(3600))
+                let repo = try container.resolve(SessionRepository.self)
+                let session = Session(id: "s1", userID: 7, ipAddress: nil, loginCount: 3)
+                try await repo.store(session, ttl: .seconds(3600))
 
-                    let fields = try await repo.find("s1")
-                    #expect(fields == ["user_id": "7", "login_count": "3", "active": "1"])
-                    #expect(try await repo.find("missing").isEmpty)
-                }
+                let fields = try await repo.find("s1")
+                #expect(fields == ["user_id": "7", "login_count": "3", "active": "1"])
+                #expect(try await repo.find("missing").isEmpty)
             }
         }
 
         @Test(arguments: TestServer.available)
         func leaderboardReadsBestFirst(_ server: TestServer) async throws {
             try await withValkeyContainer(server) { container, source in
-                try await container.withScope { scope in
-                    let repo = try container.resolve(SessionRepository.self, in: scope)
-                    try await repo.recordScore("ada", 420)
-                    try await repo.recordScore("grace", 990)
-                    try await repo.recordScore("edsger", 700)
+                let repo = try container.resolve(SessionRepository.self)
+                try await repo.recordScore("ada", 420)
+                try await repo.recordScore("grace", 990)
+                try await repo.recordScore("edsger", 700)
 
-                    let top = try await repo.leaderboard(top: 2)
-                    #expect(top.count == 2)
-                    #expect(top[0] == ("grace", 990))
-                    #expect(top[1] == ("edsger", 700))
-                }
+                let top = try await repo.leaderboard(top: 2)
+                #expect(top.count == 2)
+                #expect(top[0] == ("grace", 990))
+                #expect(top[1] == ("edsger", 700))
             }
         }
     }

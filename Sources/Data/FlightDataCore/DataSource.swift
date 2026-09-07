@@ -10,14 +10,17 @@
 ///
 /// ## The checkout/release pair (design delta D1)
 ///
-/// `withConnection` looks like the whole contract. Scope-bound
-/// checkout forced one deliberate extension: component factories are
-/// *synchronous* (Flight Core), so the scoped `ScopedConnection` component
-/// must acquire its connection synchronously — an async-only `withConnection`
-/// cannot be bridged from a synchronous factory without blocking a
-/// cooperative-pool thread, which deadlocks on a single-threaded executor.
-/// `checkout()`/`release(_:)` are therefore the pool's primitives, and
-/// `withConnection` ships as a derived default on top of them.
+/// `withConnection` is the contract callers use: a connection is leased for
+/// one operation and returned when it ends, on the success and error paths
+/// alike. `checkout()`/`release(_:)` remain the pool's primitives underneath,
+/// and `checkout(waitingUpTo:)` polls `checkout()` by default for a pool with
+/// no native wake path.
+///
+/// Scope-bound checkout used to force a second, synchronous acquisition path:
+/// component factories are synchronous, so a `.scoped` connection component
+/// could not await. That component is gone — a connection is leased per
+/// operation rather than held for a request — and with it the reason the
+/// synchronous path had to satisfy a *component*.
 ///
 /// ## Queueing (design delta D8)
 ///
@@ -36,10 +39,9 @@
 /// failing is correct, because a request that has waited that long is a
 /// request nobody is still watching.
 ///
-/// Only the synchronous path still fails fast, because it has no choice.
-/// `ScopedConnection`'s factory is synchronous, which is why an async caller
-/// that wants the scope's connection queued takes it up front and offers it
-/// through ``PendingConnections``.
+/// The synchronous `checkout()` still fails fast, because it has no choice.
+/// Nothing in this package calls it directly any more: every caller goes
+/// through `withConnection`, which queues.
 public protocol DataSource: Sendable {
     /// The store-specific connection/session type. Postgres yields a
     /// PostgresConnection; Mongo would yield a session; Redis a command
@@ -50,11 +52,11 @@ public protocol DataSource: Sendable {
 
     /// Check out a connection from the pool.
     ///
-    /// Synchronous because its two callers are synchronous: the scoped
-    /// `ScopedConnection` factory and a store package's transaction
-    /// coordinator (`FlightTransactionCoordinator.begin` is synchronous by
-    /// Flight Core). Implementations return promptly — a free connection or a
-    /// typed error from `DataSourceError` — and never park the calling thread.
+    /// The non-waiting primitive: implementations return promptly — a free
+    /// connection or a typed error from `DataSourceError` — and never park the
+    /// calling thread. `checkout(waitingUpTo:)` builds queueing on top of it,
+    /// and `withConnection` builds leasing on top of that. Prefer those;
+    /// this exists as the primitive they are defined in terms of.
     ///
     /// Every error thrown here is a `DataSourceError`: that is the portable
     /// vocabulary a store-agnostic caller reacts to without knowing the store,

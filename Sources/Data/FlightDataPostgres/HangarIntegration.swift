@@ -3,87 +3,70 @@ import FlightDataCore
 import Hangar
 import PostgresNIO
 
-// The Hangar adapter (hangar-design): what makes `repo.all(...)` work
-// inside a Flight application. Deliberately thin — Hangar knows nothing
-// about Flight; this file is the entire coupling.
+// The Hangar adapter: what makes `repo.all(...)` work inside a Flight
+// application. Deliberately thin — Hangar knows nothing about Flight, and
+// this file is the entire coupling.
 //
-// The central decision: the scope's `Repo` is **bound to the scope's
-// connection** (Hangar's `Repo(connection:)`), not to a pool. Every
-// repository in a scope therefore shares one connection with
-// `@Transactional`'s coordinator — a Hangar query inside a
-// `@Transactional` method runs *inside* that transaction, not beside it on
-// a different pool connection. Transactional coherence is the reason the
-// design's sketch ("register Repo as a singleton") is implemented
-// scoped here; the sketch predates this package's scoped-connection model.
+// A `Repo` is bound to a connection, and a connection is leased for one
+// operation, so a `Repo` is constructed per operation too. `withRepo` is the
+// one-liner for that: `withConnection` plus a constructor.
 //
-// One caution follows from sharing the connection, and it is sharp enough to
-// state twice: within a single unit of work, drive transactions through ONE
-// mechanism — `@Transactional` (token nesting, `flight_sp_N` savepoints) or
-// `repo.transaction { }` (`hangar_sp_N`) — never both.
+// ## What this file used to be, and why it isn't
 //
-// ## Why `repo.transaction { }` inside `@Transactional` is not safe here
+// `Repo` was a `.scoped` component bound to a request-held connection, so a
+// Hangar query inside a `@Transactional` method ran *inside* that transaction
+// rather than beside it on a different pool connection. That coupling had a
+// sharp edge, documented here at length: a `Repo`'s `inTransaction` is fixed
+// when the repo is *constructed*, and the ambient repo for a unit of work was
+// constructed before the body ran — so it always believed
+// `inTransaction == false`, emitted a literal `BEGIN`/`COMMIT` when nested,
+// and that `COMMIT` ended the enclosing transaction. Writes the caller
+// intended to roll back became durable, silently, with no error anywhere.
+// This file's own header called the fix "consult the coordinator per call
+// rather than snapshot at construction."
 //
-// `Repo`'s `inTransaction` is fixed when the repo is *constructed*, and the
-// ambient repo for a unit of work is constructed before the body runs — which
-// is necessarily before any `@Transactional` method inside that body has
-// opened anything. So the ambient repo always believes `inTransaction ==
-// false`, and the sample below the factory ("consult the coordinator") only
-// holds for a repo resolved after the BEGIN, which the ambient one never is.
-//
-// The consequence is not a warning. A repo that believes it is outermost
-// emits a literal `BEGIN`/`COMMIT`: Postgres warns about the redundant `BEGIN`
-// and ignores it, and then the `COMMIT` **ends the enclosing transaction** —
-// so work the caller intended to roll back is durable, silently, with no
-// error anywhere. It is the same failure the `inTransaction` flag exists to
-// prevent, arriving through the one path the flag cannot see.
-//
-// Fixing it properly needs Hangar to consult the coordinator per call rather
-// than snapshot at construction; until then this is a documented constraint
-// rather than a defended one. Inside a `@Transactional` method, use the repo's
-// statements directly and let `@Transactional` own the nesting.
+// Constructing the repo per operation *is* that fix. There is no ambient repo
+// to go stale, and nesting is Hangar's own `transaction { }`, which tracks
+// depth itself and emits savepoints. The caution that used to need stating
+// twice — never drive transactions through two mechanisms in one unit of work
+// — no longer has a second mechanism to warn about.
 
-extension Container {
-    /// Resolves the ambient scope's `Repo` — the same trick as the
-    /// `PostgresConnection` overload above it: more specific than Core's
-    /// generic `resolve`, so `@Autowired var repo: Repo` routes through the
-    /// ambient scope that is bound whenever a scoped repository is being
-    /// constructed.
-    public func resolve(
-        _ type: Repo.Type = Repo.self,
-        qualifier: String? = nil
-    ) throws -> Repo {
-        try resolveInActiveScope(Repo.self, qualifier: qualifier)
-    }
-}
-
-extension PostgresDataModule {
-    /// Registers the scoped `Repo` for this datasource — called from
-    /// `configure(_:)`. Factory borrows the scope's connection lease, so
-    /// the repo lives exactly as long as the scope and its connection.
-    func registerRepo(_ container: Container, name: String) {
-        let factory: @Sendable (Container) throws -> Repo = { container in
-            let connection = try container.resolveInActiveScope(
-                ScopedConnection<PostgresDataSource>.self, qualifier: name
-            ).connection
-            // If a @Transactional method already opened a transaction on this
-            // connection, the repo must nest as a savepoint. Told otherwise it
-            // would emit a literal BEGIN/COMMIT, and that COMMIT would end the
-            // enclosing transaction — making writes the caller intended to roll
-            // back durable instead. Hangar cannot detect this itself; the
-            // coordinator can, because it opened it.
-            //
-            // This is a snapshot, and it is right only for a repo resolved
-            // while a transaction is already open. The *ambient* repo is
-            // resolved before the unit of work's body runs, so it always sees
-            // false — see the file header for what that costs and why it is a
-            // documented constraint rather than a fixed one.
-            let coordinator = try? container.resolve(PostgresTransactionCoordinator.self)
-            let inTransaction = coordinator?.isTransactionOpen(on: connection) ?? false
-            return Repo(connection: connection, inTransaction: inTransaction)
-        }
-        container.register(Repo.self, qualifier: name, scope: .scoped, factory: factory)
-        if name == PrimaryDataSource.name {
-            container.register(Repo.self, scope: .scoped, factory: factory)
+extension DataSource where Connection == PostgresConnection {
+    /// Leases a connection for the duration of `body` and hands it to a
+    /// Hangar `Repo`.
+    ///
+    /// ```swift
+    /// let user = try await pool.withRepo { repo in
+    ///     try await repo.one(User.where { $0.id == id })
+    /// }
+    /// ```
+    ///
+    /// For several statements that must share a transaction, use Hangar's own
+    /// bracket inside this one — it owns nesting, isolation level, and
+    /// serialization-failure retry:
+    ///
+    /// ```swift
+    /// try await pool.withRepo { repo in
+    ///     try await repo.transaction { tx in
+    ///         try await tx.insert(order)
+    ///         try await tx.update(account)
+    ///     }
+    /// }
+    /// ```
+    /// Hangar's ambient `Repo.require()` is bound for the duration of `body`,
+    /// so code that cannot take a repo parameter can still reach one. The
+    /// binding's extent is exactly this bracket — visible in the code that
+    /// opens it, unlike the old arrangement, where a unit of work bound the
+    /// ambient repo for its whole duration from inside the framework.
+    public func withRepo<T>(
+        isolation: isolated (any Actor)? = #isolation,
+        _ body: (Repo) async throws -> T
+    ) async throws -> T {
+        try await withConnection { connection in
+            let repo = Repo(connection: connection)
+            return try await Repo.with(repo) {
+                try await body(repo)
+            }
         }
     }
 }

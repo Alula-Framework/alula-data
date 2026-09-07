@@ -45,24 +45,29 @@ struct ModuleRegistrationTests {
         #expect(Set(probes.map(\.datasourceName)) == ["primary", "ephemeral"])
     }
 
-    @Test func scopedConnectionComponentsAreRegistered() throws {
+    @Test func poolAnswersQualifiedAndPrimaryUnqualified() throws {
         let container = try build()
-        let leases = container.allRegistrations().filter {
-            $0.typeName.contains("ScopedConnection") && $0.typeName.contains("ValkeyDataSource")
-        }
-        #expect(Set(leases.compactMap(\.qualifier)) == ["primary", "ephemeral"])
 
-        let connections = container.allRegistrations().filter { $0.typeName.contains("ValkeyConnection") }
-        // Qualified for both datasources, plus the unqualified primary alias.
-        #expect(connections.count == 3)
-        #expect(connections.contains { $0.qualifier == nil })
-        #expect(connections.allSatisfy { $0.scope == .scoped })
+        // Only the pool is registered — a connection is leased per operation,
+        // not resolved. The `.scoped` `ScopedConnection` and `ValkeyConnection`
+        // registrations this test used to assert are gone.
+        let pools = container.allRegistrations().filter {
+            $0.typeName.contains("ValkeyDataSource")
+        }
+        #expect(pools.allSatisfy { $0.scope == .singleton })
+        #expect(Set(pools.compactMap(\.qualifier)) == ["primary", "ephemeral"])
+        #expect(pools.contains { $0.qualifier == nil }, "the primary answers unqualified too")
+
+        #expect(
+            container.allRegistrations().allSatisfy { !$0.typeName.contains("ScopedConnection") },
+            "no lease component survives")
     }
 
-    @Test func scopedConnectionRefusesResolutionOutsideAScope() throws {
+    @Test func connectionIsNotAComponent() throws {
         let container = try build()
-        // Core's captive-dependency guarantee, preserved by the resolution
-        // overloads: no ambient scope → loud failure, not a leaked lease.
+        // A connection is leased through `withConnection`, never resolved, so
+        // nothing registers one. The captive-dependency hazard the `.scoped`
+        // registration had to guard against cannot arise.
         #expect(throws: (any Error).self) {
             try container.resolve(ValkeyConnection.self)
         }
@@ -72,7 +77,8 @@ struct ModuleRegistrationTests {
         let container = try build()
         let repositories = container.allRegistrations().filter { $0.stereotype == .repository }
         #expect(repositories.contains { $0.typeName.contains("SessionRepository") })
-        #expect(repositories.allSatisfy { $0.scope == .scoped })
+        #expect(repositories.allSatisfy { $0.scope == .singleton },
+                "a repository holds the pool, not a connection, so it is a singleton")
     }
 
     @Test func checkoutBeforeServiceStartFailsLoudly() throws {

@@ -115,50 +115,5 @@ struct PoolWaitingTests {
             source.release(held)
         }
     }
-
-    @Test("a scope offered a waited-for connection uses it rather than checking out again")
-    func scopeTakesTheOfferedConnection() async throws {
-        try await withPostgresContainer(poolSize: 1) { container, source in
-            // One connection in the pool. The lazy path would fail here the
-            // moment the scope resolved a repository, because the waiting
-            // caller already holds the only connection.
-            try await container.withScope { scope in
-                try await container.withPostgresTransactions(
-                    in: scope, acquiring: .waiting(timeout: .seconds(5))
-                ) {
-                    let lease = try container.resolve(
-                        ScopedConnection<PostgresDataSource>.self,
-                        qualifier: PrimaryDataSource.name, in: scope)
-                    #expect(!lease.connection.isClosed)
-                }
-            }
-
-            // And it went back: the pool is whole again afterwards. Waiting
-            // rather than checking out flat, because a released connection is
-            // reset with DISCARD ALL before it is offered again — it is
-            // checked out to nobody and available to nobody for that moment.
-            let connection = try await source.checkout(waitingUpTo: .seconds(5))
-            source.release(connection)
-        }
-    }
-
-    @Test("an offered connection nobody claimed is returned, not leaked")
-    func unclaimedOfferIsReturned() async throws {
-        try await withPostgresContainer(poolSize: 1) { container, source in
-            try await container.withScope { scope in
-                try await container.withPostgresTransactions(
-                    in: scope, acquiring: .waiting(timeout: .seconds(5))
-                ) {
-                    // A request that touches no repository at all.
-                }
-            }
-
-            // The one connection is available again. Without the withdrawal
-            // it would be checked out to nobody, forever — a pool that leaks
-            // one connection per database-free request.
-            let connection = try await source.checkout(waitingUpTo: .seconds(5))
-            source.release(connection)
-        }
-    }
 }
 }

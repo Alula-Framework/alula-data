@@ -45,12 +45,12 @@ struct ModuleRegistrationTests {
 
     @Test func primaryDatasourceAnswersUnqualifiedResolution() throws {
         let container = try build()
-        let coordinator = try container.resolve(PostgresTransactionCoordinator.self)
-        #expect(coordinator.datasource == "primary")
+        let primary = try container.resolve(PostgresDataSource.self)
+        #expect(primary.name == "primary")
 
         // The named datasource must be asked for by name.
-        let analytics = try container.resolve(PostgresTransactionCoordinator.self, qualifier: "analytics")
-        #expect(analytics.datasource == "analytics")
+        let analytics = try container.resolve(PostgresDataSource.self, qualifier: "analytics")
+        #expect(analytics.name == "analytics")
     }
 
     @Test func repositoriesRegisterWithRepositoryStereotype() throws {
@@ -58,7 +58,8 @@ struct ModuleRegistrationTests {
         let repositories = container.allRegistrations().filter { $0.stereotype == .repository }
         #expect(repositories.contains { $0.typeName.contains("UserRepository") })
         #expect(repositories.contains { $0.typeName.contains("LedgerRepository") })
-        #expect(repositories.allSatisfy { $0.scope == .scoped })
+        #expect(repositories.allSatisfy { $0.scope == .singleton },
+                "a repository holds the pool, not a connection, so it is a singleton")
     }
 
     @Test func malformedURLFailsAtFreeze() {
@@ -93,10 +94,12 @@ struct ModuleRegistrationTests {
         }
     }
 
-    @Test func resolvingConnectionOutsideScopeThrows() throws {
+    @Test func connectionIsNotAComponent() throws {
         let container = try build()
-        // Our concrete resolve overload preserves the captive-dependency
-        // guarantee: no ambient scope → loud error, not a pinned connection.
+        // A connection is leased per operation through `withConnection`, not
+        // resolved. Nothing registers one, so asking is an error — which also
+        // means the captive-dependency hazard the old `.scoped` registration
+        // had to guard against cannot arise.
         #expect(throws: ResolutionError.self) {
             _ = try container.resolve(PostgresConnection.self)
         }
@@ -108,41 +111,5 @@ struct ModuleRegistrationTests {
         container.register(Configuration.self, scope: .singleton) { _ in Self.offlineConfiguration }
         try module.configure(container)
         #expect(module.service != nil)
-    }
-}
-
-@Suite("Transaction coordinator without a scope")
-struct TransactionScopeRequirementTests {
-    @Test func beginOutsideScopeThrowsNoActiveScope() throws {
-        let container = try TestContainer.build(
-            configuration: ModuleRegistrationTests.offlineConfiguration
-        ) {
-            PostgresDataModule<PrimaryDataSource>()
-        }
-        let coordinator = try container.resolve(PostgresTransactionCoordinator.self)
-        // "A @Transactional method must execute inside an active Scope" —
-        // and this is a throw, not a compile error, because the information
-        // genuinely does not exist at compile time.
-        do {
-            _ = try coordinator.begin()
-            Issue.record("begin() outside a scope must throw")
-        } catch let error as ResolutionError {
-            guard case .noActiveScope = error else {
-                Issue.record("expected noActiveScope, got \(error)")
-                return
-            }
-        }
-    }
-
-    @Test func completingUnknownTokenThrows() throws {
-        let container = try TestContainer.build(
-            configuration: ModuleRegistrationTests.offlineConfiguration
-        ) {
-            PostgresDataModule<PrimaryDataSource>()
-        }
-        let coordinator = try container.resolve(PostgresTransactionCoordinator.self)
-        #expect(throws: PostgresTransactionError.unknownToken(99)) {
-            try coordinator.commit(FlightTransactionToken(id: 99))
-        }
     }
 }

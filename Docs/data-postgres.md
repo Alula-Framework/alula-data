@@ -136,6 +136,48 @@ try await repo.update(changeset)
 
 Validation still throws before anything reaches the wire.
 
+### Streaming holds a connection for as long as the client reads
+
+`repo.stream` borrows the scope's connection for the duration of its closure —
+that is what makes it stream rather than materialize. Put an HTTP response
+inside that closure and the *client* decides how long the borrow lasts:
+
+```swift
+return .streaming(contentType: .init("text/csv")) { writer in
+    _ = try? await pool.withRepo { repo in
+        try await repo.stream(query) { rows in
+            for try await row in rows { _ = await writer.write(csv(row)) }   // ← suspends on the client
+        }
+    }
+}
+```
+
+`writer.write` suspends until the transport has taken the chunk, which is
+correct — a producer faster than its reader is slowed rather than buffered —
+and it means a reader at 20 KB/s holds a pooled connection for the whole
+download. Measured on a pool of four: four such readers, and
+`activeCheckouts` is 4, `availableConnections` 0, with every other request
+queueing behind them for `checkout_timeout_ms` and then failing. An
+unauthenticated client that reads slowly is a denial of service against every
+other database user in the process — the slowloris shape, pointed at the
+pool rather than at the socket.
+
+Three ways out, in the order they are usually worth reaching for:
+
+1. **Page it.** Fetch a bounded batch, release the connection, write it,
+   fetch the next. The export takes more round trips and holds nothing
+   between them.
+2. **Give exports their own pool.** A second named datasource against the
+   same database (`datasource.exports.pool_size: 2`) bounds the damage to
+   itself.
+3. **Bound the response.** A write timeout on the streamed body — the same
+   idea as `flight.channels.write-timeout-seconds` — turns an indefinite hold
+   into a failed download.
+
+Nothing here is a defect in either layer; it is what the two correct
+behaviours add up to, and it is worth knowing before an export endpoint meets
+a slow phone.
+
 ### Migrations
 
 Not implemented here — Flight Migrate's. This package only wires the

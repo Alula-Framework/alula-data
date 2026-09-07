@@ -14,22 +14,19 @@ import Valkey
 /// ])
 /// ```
 ///
-/// `configure(_:)` registers, all qualified by `Name.name`:
+/// `configure(_:)` registers the pool — `ValkeyDataSource`, `.singleton`,
+/// qualified by `Name.name` — and its `DataSourceLiveness` probe (via
+/// `register(dataSource:)`, Flight Data Core). For the `primary` datasource
+/// the pool also answers unqualified resolution, so the single-store app
+/// never writes a qualifier.
 ///
-/// 1. the pool — `ValkeyDataSource`, `.singleton`, plus the scope-bound
-///    `ScopedConnection<ValkeyDataSource>` lease and the
-///    `DataSourceLiveness` probe (via `register(dataSource:)`, Flight Data
-///    Core /);
-/// 2. the raw connection — `ValkeyConnection`, `.scoped`, borrowed from the
-///    scope's lease so repositories can say
-///    `@Autowired var valkey: ValkeyConnection`. For the
-///    `primary` datasource it is *also* registered unqualified, so the
-///    single-store app never writes a qualifier.
+/// A `ValkeyConnection` is not a component: a repository holds the pool and
+/// leases one per operation through `pool.withConnection { }`.
 ///
-/// Deliberately absent: no migration runner ( — schemaless store)
-/// and **no transaction coordinator** ( — `MULTI`/`EXEC` is not a
-/// transaction in the `@Transactional` sense; the capability ships as
-/// `multi` under its own honest name).
+/// Deliberately absent: no migration runner (schemaless store) and no
+/// transaction coordinator — `MULTI`/`EXEC` is not a transaction in the
+/// sense a relational store means, so the capability ships as `multi` under
+/// its own honest name.
 ///
 /// `service` is the pool's `run()`: dial at start (Flight Core — no
 /// request served before the pool is live), replace broken connections while
@@ -61,24 +58,19 @@ public final class ValkeyDataModule<Name: DataSourceName>: FlightModule {
             return try ValkeyDataSource(settings: settings, resetOnRelease: reset)
         }
 
-        // The scope's raw connection, borrowed from the lease (design.3's
-        // `@Autowired var valkey: ValkeyConnection`). The lease owns
-        // return-to-pool (Flight Data Core D2); this component is a view
-        // into it, living exactly as long as the same scope.
-        let connectionFactory: @Sendable (Container) throws -> ValkeyConnection = { container in
-            try container.resolveInActiveScope(
-                ScopedConnection<ValkeyDataSource>.self, qualifier: name
-            ).connection
-        }
-        container.register(ValkeyConnection.self, qualifier: name, scope: .scoped, factory: connectionFactory)
+        // Only the pool is a component. A `ValkeyConnection` is leased for
+        // one operation through `pool.withConnection { }` and returned when
+        // that operation ends — see FlightDataCore's ContainerRegistration for
+        // why the `.scoped` lease it replaces propagated lifetime up the
+        // dependency graph.
 
         // The conventional default datasource also answers unqualified
-        // resolution, so `@Autowired var valkey: ValkeyConnection` works
-        // without ceremony in the one-store app. Named datasources must be
-        // asked for by name — with several pools, silence would be guessing
-        // (Flight Core's qualifier posture).
+        // resolution, so `@Inject var pool: ValkeyDataSource` works without
+        // ceremony in the one-store app.
         if name == PrimaryDataSource.name {
-            container.register(ValkeyConnection.self, scope: .scoped, factory: connectionFactory)
+            container.register(ValkeyDataSource.self, scope: .singleton) { c in
+                try c.resolve(ValkeyDataSource.self, qualifier: name)
+            }
         }
     }
 

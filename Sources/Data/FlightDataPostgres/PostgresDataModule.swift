@@ -14,19 +14,17 @@ import ServiceLifecycle
 /// ])
 /// ```
 ///
-/// `configure(_:)` registers, all qualified by `Name.name`:
+/// `configure(_:)` registers the pool — `PostgresDataSource`, `.singleton`,
+/// qualified by `Name.name` — and its `DataSourceLiveness` probe (via
+/// `register(dataSource:)`, Flight Data Core). For the `primary` datasource
+/// the pool also answers unqualified resolution, so the single-database app
+/// never writes a qualifier.
 ///
-/// 1. the pool — `PostgresDataSource`, `.singleton`, plus the scope-bound
-///    `ScopedConnection<PostgresDataSource>` lease and the
-///    `DataSourceLiveness` probe (via `register(dataSource:)`, Flight Data
-///    Core /);
-/// 2. the raw connection — `PostgresConnection`, `.scoped`, borrowed from
-///    the scope's lease so repositories can say
-///    `@Autowired var connection: PostgresConnection`. For the
-///    `primary` datasource it is *also* registered unqualified, so the
-///    single-database app never writes a qualifier;
-/// 3. the transaction coordinator — `PostgresTransactionCoordinator`,
-///    `.singleton`, unqualified alias for `primary` likewise.
+/// That is the whole registration. A `PostgresConnection` is not a
+/// component: a repository holds the pool and leases a connection per
+/// operation through `pool.withConnection { }` or `pool.withRepo { }`.
+/// Transactions are Hangar's `repo.transaction { }`, so there is no
+/// coordinator either.
 ///
 /// `service` is the pool's `run()`: dial at start (Flight Core step 9 —
 /// no request served before the pool is live), replace broken connections
@@ -58,47 +56,41 @@ public final class PostgresDataModule<Name: DataSourceName>: FlightModule {
             return try PostgresDataSource(settings: settings, resetOnRelease: reset)
         }
 
-        // The scope's raw connection, borrowed from the lease (design.3's
-        // `@Autowired var connection: PostgresConnection`). The lease owns
-        // return-to-pool (Flight Data Core D2); this component is a view into it,
-        // living exactly as long as the same scope.
-        let connectionFactory: @Sendable (Container) throws -> PostgresConnection = { container in
-            try container.resolveInActiveScope(
-                ScopedConnection<PostgresDataSource>.self, qualifier: name
-            ).connection
-        }
-        container.register(PostgresConnection.self, qualifier: name, scope: .scoped, factory: connectionFactory)
-
-        // The coordinator: singleton per datasource; finds the scope's
-        // connection at begin() through the ambient scope.
-        let coordinatorFactory: @Sendable (Container) throws -> PostgresTransactionCoordinator = { container in
-            PostgresTransactionCoordinator(container: container, datasource: name)
-        }
-        container.register(
-            PostgresTransactionCoordinator.self, qualifier: name, scope: .singleton,
-            factory: coordinatorFactory)
-
-        // The scope's Hangar `Repo` (hangar-design), bound to the same
-        // connection as everything above — see HangarIntegration.swift for
-        // why scoped-and-connection-bound rather than the sketch's
-        // singleton.
-        registerRepo(container, name: name)
+        // Only the pool is a component. A `PostgresConnection` is not: it is
+        // leased for one operation through `pool.withConnection { }` and
+        // returned when that operation ends.
+        //
+        // There used to be a `.scoped` `PostgresConnection` here — a view onto
+        // a request-held lease — plus a `PostgresTransactionCoordinator` that
+        // located that connection through the ambient scope, and a `.scoped`
+        // Hangar `Repo` bound to it. All three are gone: a repository holds
+        // the pool and brackets each operation, and transactions are Hangar's
+        // `repo.transaction { }`.
 
         // The conventional default datasource also answers unqualified
-        // resolution, so `@Autowired var connection: PostgresConnection`
-        // works without ceremony in the one-database app. Named datasources
-        // must be asked for by name — with several pools, silence would be
-        // guessing (Flight Core's qualifier posture).
+        // resolution, so `@Inject var pool: PostgresDataSource` works without
+        // ceremony in the one-database app. The scoped `PostgresConnection`
+        // registration used to extend that courtesy; it moves to the pool,
+        // because the pool is what a repository now holds. Named datasources
+        // must still be asked for by name — with several pools, silence would
+        // be guessing (Flight Core's qualifier posture).
         if name == PrimaryDataSource.name {
-            container.register(PostgresConnection.self, scope: .scoped, factory: connectionFactory)
-            container.register(
-                PostgresTransactionCoordinator.self, scope: .singleton, factory: coordinatorFactory)
+            container.register(PostgresDataSource.self, scope: .singleton) { c in
+                try c.resolve(PostgresDataSource.self, qualifier: name)
+            }
         }
     }
 
     public var service: (any Service)? {
         container.map { PostgresPoolService<Name>(container: $0) }
     }
+
+    /// A pool is what everything else borrows from, so it starts first and
+    /// closes last. Without saying so, the order came from however the
+    /// application listed its modules, and the shape every example uses put
+    /// the HTTP transport first — which made the pool close *underneath* a
+    /// server still serving requests.
+    public var serviceShutdownPhase: ServiceShutdownPhase { .infrastructure }
 }
 
 /// The pool's ServiceLifecycle wrapper: resolves the datasource post-freeze
