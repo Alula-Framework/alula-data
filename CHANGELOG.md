@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Requires flight 0.16.0. `Package.swift` still says `from: "0.14.0"` and must
+be bumped when flight 0.16.0 is tagged — this release cannot resolve against
+an earlier flight.
+
+### Changed
+
+- **Breaking.** `FlightPubSubValkeyModule` is now a *dependency* of
+  `FlightPubSubModule` rather than a dependent, and takes its configuration:
+
+  ```swift
+  // before
+  try await Flight.bootstrap(configuration: configuration, modules: [
+      FlightPubSubValkeyModule.self,   // pulled in FlightPubSubModule
+      AppModule.self,
+  ])
+
+  // after — the composition root builds it and hands PubSub the adapter
+  try await Flight.run(
+      configuration: configuration,
+      modules: [FlightPubSubValkeyModule.self, FlightPubSubModule.self, AppModule.self],
+      composedBy: flightComposeModules)
+  ```
+
+  `flight new` writes that `composedBy:` argument, and the generated
+  composition root does the wiring; an application that already passes it
+  needs no change beyond adding `FlightPubSubModule` to `modules:`.
+
+  The module is a `struct` taking `init(configuration:)`, exposes the adapter
+  as `adapter`, and no longer declares `FlightPubSubModule` in `dependencies`,
+  stashes a `Container` during `configure`, or exposes `PubSubRelayService`.
+  It provides an adapter; that is the whole contract. `isTypeConstructible` is
+  false, so building it from its type throws
+  `BootstrapError.moduleRequiresConstruction` naming the fix rather than
+  producing a misconfigured module.
+
+  Flight's `FlightPubSubModule` now takes the adapter and owns the relay,
+  because it holds both halves the relay needs. Previously PubSub composed by
+  *presence* — asking the container at `freeze()` whether an adapter had been
+  registered — which made relay ownership this module's responsibility, and an
+  adapter author who forgot it got a cluster that relayed nothing, silently.
+
+- `ValkeyPubSubService` runs only the client pool and drains the adapter's
+  subscribe loops. The relay-before-pool shutdown ordering it used to arrange
+  by hand now falls out of the module graph: this module starts before PubSub,
+  and `ServiceGroup` shuts down in reverse start order.
+
+---
+
 ## [0.5.1] - 2026-09-08
 
 Documentation only. No source change, and no version requirement change:

@@ -7,18 +7,23 @@ import Valkey
 /// Carries PubSub messages between nodes over Valkey's `PUBLISH`/`SUBSCRIBE`.
 ///
 /// `FlightPubSub` handles delivery *within* a process on its own; this is the
-/// hop *between* processes. Registering one turns three things from
-/// single-node into clustered without any call site changing:
+/// hop *between* processes. Handing one to `FlightPubSubModule` turns three
+/// things from single-node into clustered without any call site changing:
 ///
 /// - `Channels` broadcasts reach sockets connected to other servers
 /// - `Presence` can run in its membership mode
 /// - `ClusteredPubSub` becomes reachable at all
 ///
 /// ```swift
-/// try await Flight.bootstrap(
+/// try await Flight.run(
 ///     configuration: try Configuration.load(),
-///     modules: [FlightPubSubValkeyModule.self, AppModule.self])
+///     modules: [FlightPubSubValkeyModule.self, FlightPubSubModule.self, AppModule.self],
+///     composedBy: flightComposeModules)
 /// ```
+///
+/// `FlightPubSubValkeyModule` builds one from `pubsub.valkey.url` and exposes
+/// it as `adapter`; the generated composition root passes it to
+/// `FlightPubSubModule(configuration:adapter:)`.
 ///
 /// ## What this does and does not promise
 ///

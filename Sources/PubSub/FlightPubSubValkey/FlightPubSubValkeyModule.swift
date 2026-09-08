@@ -4,14 +4,14 @@ import Logging
 import ServiceLifecycle
 import Valkey
 
-/// Registers the Valkey adapter, which is all it takes to make PubSub
+/// Provides the Valkey adapter, which is all it takes to make PubSub
 /// clustered:
 ///
 /// ```swift
-/// try await Flight.bootstrap(configuration: try Configuration.load(), modules: [
-///     FlightPubSubValkeyModule.self,   // pulls in FlightPubSubModule
-///     AppModule.self,
-/// ])
+/// try await Flight.run(
+///     configuration: try Configuration.load(),
+///     modules: [FlightPubSubValkeyModule.self, FlightPubSubModule.self, AppModule.self],
+///     composedBy: flightComposeModules)
 /// ```
 ///
 /// ```yaml
@@ -20,48 +20,88 @@ import Valkey
 ///     url: valkey://localhost:6379
 /// ```
 ///
-/// `FlightPubSubModule` composes by *presence*: its `any PubSub` factory runs
-/// at `freeze()`, sees a registered `DistributedPubSubAdapter`, and hands the
-/// application a `ClusteredPubSub` instead of the local core. Nothing that
-/// publishes or subscribes changes, which is the whole point of the seam.
+/// The composition root builds this module, takes its `adapter`, and hands it
+/// to `FlightPubSubModule(configuration:adapter:)`; `flight new` writes that
+/// `composedBy:` argument. Nothing that publishes or subscribes changes, which
+/// is the whole point of the seam.
 ///
-/// Two long-running pieces go into the application's service group: the
-/// Valkey client's own pool, and `PubSubRelayService`, which drains the
-/// adapter's incoming stream into local fan-out.
-public final class FlightPubSubValkeyModule: FlightModule {
-    public static var dependencies: [any FlightModule.Type] { [FlightPubSubModule.self] }
+/// **This module is a dependency of `FlightPubSubModule`, not a dependent.**
+/// It used to be the other way around: PubSub composed by *presence*, running
+/// its `any PubSub` factory at `freeze()` and asking the container whether
+/// anyone had registered a `DistributedPubSubAdapter`. That made this module
+/// responsible for three things — register the adapter, declare
+/// `FlightPubSubModule` in `dependencies`, and expose `PubSubRelayService`
+/// itself — and forgetting the third gave a cluster that relayed nothing,
+/// silently. PubSub now takes the adapter and owns the relay, so this module
+/// provides an adapter and stops.
+public struct FlightPubSubValkeyModule: FlightModule {
 
-    /// Stashed during `configure` so `service` can resolve post-freeze —
-    /// modules cannot resolve during the registration phase.
-    private var container: Container?
+    /// What the composition root hands to `FlightPubSubModule`.
+    ///
+    /// Typed as the existential deliberately. This is the contract — "provides
+    /// an adapter" — and it is also what lets the generated composer match
+    /// this property to `FlightPubSubModule`'s `adapter:` parameter by type,
+    /// which is the only thing connecting the two modules: neither names the
+    /// other, and flight cannot name flight-data at all.
+    public let adapter: any DistributedPubSubAdapter
 
-    public init() {}
+    /// The same adapter, concretely, for `drainSubscriptions()` — which is
+    /// this package's own shutdown concern and not part of the seam above.
+    private let valkey: ValkeyPubSubAdapter
 
-    public func configure(_ container: Container) throws {
-        self.container = container
+    /// Held so `configure` can register the same instance the service runs,
+    /// rather than constructing a second client that dials Valkey again.
+    private let client: ValkeyPubSubClient
 
-        container.register(ValkeyPubSubClient.self, scope: .singleton) { container in
-            let configuration = try container.resolve(Configuration.self)
-            let settings = try ValkeyPubSubSettings.load(from: configuration)
-            return try ValkeyPubSubClient(settings: settings)
-        }
-
-        // Registering this is what flips FlightPubSubModule's compose-by-
-        // presence choice from local to clustered.
-        container.register(ValkeyPubSubAdapter.self, scope: .singleton) { container in
-            let client = try container.resolve(ValkeyPubSubClient.self)
-            return ValkeyPubSubAdapter(
-                client: client.client,
-                channel: client.channel,
-                retryDelay: client.retryDelay)
-        }
-        container.register((any DistributedPubSubAdapter).self, scope: .singleton) { container in
-            try container.resolve(ValkeyPubSubAdapter.self)
-        }
+    /// Reads `pubsub.valkey.*` and dials nothing — building the client is
+    /// pool setup, and connecting is the service's job.
+    ///
+    /// Throwing, because building the TLS context can fail: a `valkeys://` URL
+    /// whose TLS cannot be configured must fail bootstrap rather than quietly
+    /// connecting in the clear.
+    public init(configuration: Configuration) throws {
+        let client = try ValkeyPubSubClient(
+            settings: try ValkeyPubSubSettings.load(from: configuration))
+        self.client = client
+        let valkey = ValkeyPubSubAdapter(
+            client: client.client,
+            channel: client.channel,
+            retryDelay: client.retryDelay)
+        self.valkey = valkey
+        self.adapter = valkey
     }
 
+    /// This module takes its configuration, so it cannot be built from its
+    /// type alone. Every supported path checks this and throws first.
+    public static var isTypeConstructible: Bool { false }
+
+    /// The backstop behind that flag, for a caller writing
+    /// `FlightPubSubValkeyModule()` directly.
+    public init() {
+        preconditionFailure(
+            "FlightPubSubValkeyModule takes its configuration in init(configuration:), so it "
+                + "cannot be instantiated from its type. Pass `composedBy: flightComposeModules` "
+                + "to Flight.run — `flight new` writes that argument — or construct the module "
+                + "yourself and use the entry point taking module instances.")
+    }
+
+    /// Projects what this module already holds. Note what is gone: the
+    /// `Container` the old class stashed during `configure` so that `service`
+    /// could resolve after freeze. A module that owns its components has
+    /// nothing to look up.
+    public func configure(_ container: Container) throws {
+        let client = self.client
+        let valkey = self.valkey
+        container.register(ValkeyPubSubClient.self, scope: .singleton) { _ in client }
+        container.register(ValkeyPubSubAdapter.self, scope: .singleton) { _ in valkey }
+        container.register((any DistributedPubSubAdapter).self, scope: .singleton) { _ in valkey }
+    }
+
+    /// The client pool, and nothing else. The relay is `FlightPubSubModule`'s
+    /// now — see `ValkeyPubSubService` for why that ordering is no longer this
+    /// module's problem to arrange.
     public var service: (any Service)? {
-        container.map { ValkeyPubSubService(container: $0) }
+        ValkeyPubSubService(client: client, adapter: valkey)
     }
 }
 
@@ -73,9 +113,6 @@ public final class ValkeyPubSubClient: Sendable {
     public let retryDelay: Duration
 
     init(settings: ValkeyPubSubSettings) throws {
-        // Throwing, because building the TLS context can fail and this runs at
-        // freeze(): a `valkeys://` URL whose TLS cannot be configured must fail
-        // bootstrap rather than quietly connecting in the clear.
         self.client = ValkeyClient(
             .hostname(settings.host, port: settings.port),
             configuration: try settings.clientConfiguration(),
@@ -85,42 +122,46 @@ public final class ValkeyPubSubClient: Sendable {
     }
 }
 
-/// Runs the client pool and the relay for the application's lifetime.
+/// Runs the client pool for the application's lifetime, and makes sure the
+/// adapter's subscribe loops have finished before the pool goes away.
+///
+/// Shutdown ordering used to be hand-arranged inside this service, because it
+/// ran both halves: the relay's subscription must unwind *before* the client
+/// pool is cancelled, since releasing a subscription connection while it is
+/// still initializing trips a fatal assertion inside valkey-swift's
+/// subscription state machine and takes the process down during what should be
+/// a graceful stop. (Found by a test crashing at teardown.)
+///
+/// Now the relay belongs to `FlightPubSubModule` and this module is PubSub's
+/// dependency, so it starts first — and `ServiceGroup` shuts services down in
+/// reverse start order, which stops the relay before this. The ordering falls
+/// out of the module graph instead of being reproduced by hand here. What
+/// remains is the wait: the relay returning means it stopped *reading*, while
+/// the subscribe loop behind `incoming()` is a separate task that may still be
+/// unwinding, so this waits for the thing itself before releasing the pool.
 struct ValkeyPubSubService: Service {
-    let container: Container
+    let client: ValkeyPubSubClient
+    let adapter: ValkeyPubSubAdapter
 
     func run() async throws {
-        let client = try container.resolve(ValkeyPubSubClient.self)
-        let adapter = try container.resolve(ValkeyPubSubAdapter.self)
-
-        // Shutdown is ordered on purpose: the relay's subscription must
-        // unwind *before* the client pool goes away. Cancelling both at once
-        // — the obvious `group.cancelAll()` — can release a subscription
-        // connection while it is still initializing, which trips a fatal
-        // assertion inside valkey-swift's subscription state machine and
-        // takes the process down during what should be a graceful stop.
-        // Found by a test crashing at teardown; the same race exists here.
         let pool = Task { await client.client.run() }
         defer { pool.cancel() }
 
-        // The relay refuses if PubSub is not clustered, which would mean this
-        // module registered an adapter and something else overrode the
-        // composition — worth failing loudly rather than relaying into
-        // nothing.
-        do {
-            try await PubSubRelayService(container: container).run()
-        } catch {
-            await adapter.drainSubscriptions()
-            throw error
-        }
+        // Hold the pool open until the group shuts down or this task is
+        // cancelled. `cancelWhenGracefulShutdown` turns the shutdown signal
+        // into cancellation, which is what unblocks the sleep below.
+        await withTaskCancellationHandler {
+            await withGracefulShutdownHandler {
+                // Sleeps until cancelled; the pool runs in its own task.
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(3600))
+                }
+            } onGracefulShutdown: {
+                // Nothing to do here: the enclosing group cancels this task,
+                // which ends the loop above.
+            }
+        } onCancel: {}
 
-        // The relay returning means it stopped *reading*; the subscribe loop
-        // behind `incoming()` is a separate task and may still be unwinding.
-        // This used to be `try? await Task.sleep(for: .milliseconds(50))` —
-        // which under outright cancellation throws immediately and is
-        // swallowed, so the pool was cancelled with the subscription still in
-        // flight: exactly the crash the ordering above exists to avoid, on the
-        // one path where it is most likely. Wait for the thing itself.
         await adapter.drainSubscriptions()
     }
 }
