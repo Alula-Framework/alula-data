@@ -1,15 +1,6 @@
 {
-  "originHash" : "efc4f4355ea1ad69a422c3d9ba6d533ee61b4c1d77e1401ced567f2963e6f4e2",
+  "originHash" : "5fdaa30cbd75b946794bc57c2e30f82cce40d90eb0284b31e517e66857000a8a",
   "pins" : [
-    {
-      "identity" : "flight",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Flight-Framework/flight.git",
-      "state" : {
-        "revision" : "a6ee8bc287cc1e7bc3e979d09a51f4b91edd1afd",
-        "version" : "0.14.0"
-      }
-    },
     {
       "identity" : "hangar",
       "kind" : "remoteSourceControl",
