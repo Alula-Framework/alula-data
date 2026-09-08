@@ -1,7 +1,7 @@
 # ``FlightDataPostgres``
 
-The Postgres driver: a pooled `DataSource`, request-scoped connections, and
-declarative transactions.
+The Postgres driver: a pooled `DataSource`, a connection leased per
+operation, and transactions as a visible bracket.
 
 ## Overview
 
@@ -29,9 +29,9 @@ the first request.
 
 ## Transactions are a bracket
 
-Hangar owns transactions. ``DataSource/withRepo(isolation:_:)`` leases a
-connection and hands you a `Repo` bound to it; `repo.transaction { }` is the
-unit of work:
+Hangar owns transactions. `withRepo` — this module's extension on
+`FlightDataCore`'s `DataSource` — leases a connection and hands you a `Repo`
+bound to it; `repo.transaction { }` is the unit of work:
 
 ```swift
 @Repository

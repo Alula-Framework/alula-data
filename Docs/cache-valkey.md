@@ -50,7 +50,7 @@ breaker correctly stays closed, because the pool's breaker owns that case.
 ## Using it
 
 ```swift
-try await bootstrap(configuration: .load(), modules: [
+try await Flight.bootstrap(configuration: .load(), modules: [
     FlightCacheValkeyModule.self,   // pulls in FlightCacheModule via dependencies
 ])
 ```

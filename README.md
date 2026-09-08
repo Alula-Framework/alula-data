@@ -45,7 +45,7 @@ you need.
 | Product | What it is |
 | --- | --- |
 | `FlightCache` | Cache protocol, in-memory implementation, single-flight coalescing, `@Cacheable`. |
-| `FlightDataCore` | `DataSource`, scope-bound connection checkout and queueing, changeset integration. Deliberately **no** shared transaction abstraction — `@Transactional` is defined by the Postgres driver, on top of the one thing that is genuinely shared. |
+| `FlightDataCore` | `DataSource`, per-operation connection leasing and queueing, changeset integration. Deliberately **no** shared transaction abstraction — transactions belong to the layer above a driver (Hangar's `repo.transaction { }` for Postgres), on top of the one thing that is genuinely shared. |
 | `FlightMigrateCore` | Migration discovery and ordering, plus the build tool plugin — no driver required. |
 | `FlightDataPostgres` | PostgreSQL data source over PostgresNIO, with Hangar for queries. |
 | `FlightPubSubValkey` | Carries Flight's PubSub between nodes over Valkey, which makes Channels broadcast, Presence membership, and `ClusteredPubSub` work across servers. Requires the `Valkey` trait. |
@@ -75,7 +75,8 @@ consumer and asserting no gated dependency reached it.
 
 ## Requirements
 
-Swift 6.2+, macOS 15+ or Linux. Strict concurrency throughout.
+Swift 6.3+ (see Traits above for why), macOS 15+ or Linux. Strict concurrency
+throughout.
 
 ## Running the tests
 

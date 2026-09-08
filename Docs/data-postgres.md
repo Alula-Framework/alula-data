@@ -1,7 +1,8 @@
 # Flight Data Postgres
 
-Request-scoped connections, transactions, and a DI-registered repository
-layer — for Postgres, on top of Flight Core, Flight Data Core, and Hangar.
+A pooled connection source, per-operation leases, and a DI-registered
+repository layer — for Postgres, on top of Flight Core, Flight Data Core, and
+Hangar.
 
 This package is *composition plus stereotypes*, not a from-scratch data
 stack: the driver and wire protocol are **PostgresNIO**, the query layer is
@@ -10,7 +11,7 @@ is the seam between them.
 
 | Product | Contents |
 |---|---|
-| `FlightDataPostgres` | `PostgresDataSource` (the pool, behind Flight Data Core's `DataSource` seam), `PostgresDataModule<Name>`, `PostgresTransactionCoordinator` + `withPostgresScope`/`withPostgresTransactions`, and the Hangar integration that binds a `Repo` to the scope's connection. Re-exports `FlightCore`, `FlightDataCore`, and `Hangar`, so a repository file needs one import. |
+| `FlightDataPostgres` | `PostgresDataSource` (the pool, behind Flight Data Core's `DataSource` seam), `PostgresDataModule<Name>`, `PostgresMigrations`, and the Hangar integration — `withRepo`, which leases a connection and hands you a `Repo` bound to it. Re-exports `FlightCore`, `FlightDataCore`, and `Hangar`, so a repository file needs one import. |
 
 ## Build status
 
@@ -18,7 +19,7 @@ is the seam between them.
 throwaway servers it starts and cleans up — including the disposable Postgres
 the outage suite is allowed to stop and restart.
 
-The integration suites run against a real Postgres 16: scoping, pool lifecycle,
+The integration suites run against a real Postgres 16: leasing, pool lifecycle,
 broken-connection replacement and recovery from a total outage, session
 isolation in both directions, the queueing checkout, transactions with savepoint
 nesting, changeset apply, migrate wiring, every dialect probe, and the shared
@@ -41,33 +42,41 @@ struct User: Encodable, Equatable, Sendable {
 }
 ```
 
-Repositories are `@Repository` types holding the scope's `Repo` — Hangar's
-query interface, bound to this scope's connection, so everything a
-`@Transactional` method does shares one transaction:
+Repositories are `@Repository` types holding the **pool**. Each operation
+leases a connection through `withRepo`, which hands it to a Hangar `Repo` and
+returns it when the closure ends:
 
 ```swift
-@Repository(scope: .scoped)
+@Repository
 struct UserRepository {
-    // flight:hand-registered — the registration generator cannot see module
-    // registrations; the marker acknowledges that and silences its warning.
-    @Autowired var repo: Repo   // the scope's — NOT a singleton
+    // flight:hand-registered — the pool comes from PostgresDataModule, which
+    // the registration generator cannot see; the marker silences its warning.
+    @Inject var pool: PostgresDataSource
 
     func find(byEmail email: String) async throws -> User? {
-        try await repo.one(User.where { $0.email == email })
+        try await pool.withRepo { repo in
+            try await repo.one(User.where { $0.email == email })
+        }
     }
 
     func recentlyActive(since: Date, limit: Int) async throws -> [User] {
-        try await repo.all(
-            User.where { $0.createdAt > since }
-                .order { $0.createdAt.desc() }
-                .limit(limit))
+        try await pool.withRepo { repo in
+            try await repo.all(
+                User.where { $0.createdAt > since }
+                    .order { $0.createdAt.desc() }
+                    .limit(limit))
+        }
     }
 }
 ```
 
-The raw connection is available the same way (`@Autowired var connection:
-PostgresConnection`) for anything Hangar does not express — `LISTEN`,
-`COPY`, server-side cursors.
+A repository is a `.singleton` — the default — because what it holds is the
+pool, which every request shares. Nothing here is request-scoped, so a slow
+handler holds no connection between its queries.
+
+The raw connection is available the same way, through
+`pool.withConnection { connection in … }`, for anything Hangar does not
+express — `LISTEN`, `COPY`, server-side cursors.
 
 The module is one generic instantiation per named datasource, reading
 `datasource.<name>.url` / `pool_size` from Flight Config at freeze — a bad
@@ -81,7 +90,7 @@ datasource:
 ```
 
 ```swift
-try await bootstrap(configuration: .load(), modules: [
+try await Flight.bootstrap(configuration: .load(), modules: [
     PostgresDataModule<PrimaryDataSource>.self,
     AppModule.self,
 ])
@@ -93,32 +102,42 @@ broken connections while running, and drains on graceful shutdown.
 
 ### Transactions
 
-`@Transactional` expands at compile time to `BEGIN`/`COMMIT`/`ROLLBACK` — and
-`SAVEPOINT`/`ROLLBACK TO SAVEPOINT` when nested — against **the scope's
-connection**. The coordinator and scope are task-locals; bind them around a
-unit of work:
+Hangar owns transactions. `repo.transaction { }` is the unit of work, inside
+the `withRepo` bracket that leased the connection:
 
 ```swift
-@Repository(scope: .scoped)
+@Repository
 struct LedgerRepository {
-    @Autowired var connection: PostgresConnection
+    @Inject var pool: PostgresDataSource
 
-    @Transactional
-    func transfer(_ amount: Int, from: String, to: String) async throws { … }
-}
-
-try await container.withPostgresScope { scope in
-    let ledger = try container.resolve(LedgerRepository.self, in: scope)
-    try await ledger.transfer(40, from: "checking", to: "savings")
+    func transfer(_ amount: Int, from: String, to: String) async throws {
+        try await pool.withRepo { repo in
+            try await repo.transaction { tx in
+                try await tx.update(debit(from, amount))
+                try await tx.update(credit(to, amount))
+            }
+        }
+    }
 }
 ```
 
-A handler that already has a request scope binds it instead:
-`try await container.withPostgresTransactions(in: context.scope) { … }`.
-Calling a `@Transactional` method with no active scope throws
-`ResolutionError.noActiveScope` (deliberate runtime residue); calling it
-without the coordinator bound runs it under Core's documented no-op default —
-both behaviors are pinned by tests.
+Every statement inside runs on the one leased connection. Throwing rolls
+back. Nesting becomes a `SAVEPOINT`, so an inner failure can be handled
+without discarding the outer work — Hangar tracks the depth, which is what
+makes the nesting correct.
+
+`withRepo` also binds Hangar's ambient `Repo.require()` for the duration of
+the closure, so code that cannot take a repo parameter can still reach one.
+The extent of that binding is exactly the bracket you can see.
+
+This replaced `@Transactional`, `withPostgresScope`/`withPostgresTransactions`
+and the transaction coordinators, which found the connection through an
+ambient scope. The old arrangement had a defect the shape could not avoid: a
+`Repo`'s `inTransaction` was fixed when the repo was *constructed*, and the
+ambient repo was constructed before the unit of work ran — so a nested query
+emitted a literal `COMMIT` that ended the enclosing transaction, and writes
+the caller intended to roll back became durable with no error anywhere.
+Constructing the repo per operation removes the thing that went stale.
 
 ### Changesets
 
@@ -138,7 +157,7 @@ Validation still throws before anything reaches the wire.
 
 ### Streaming holds a connection for as long as the client reads
 
-`repo.stream` borrows the scope's connection for the duration of its closure —
+`repo.stream` borrows the leased connection for the duration of its closure —
 that is what makes it stream rather than materialize. Put an HTTP response
 inside that closure and the *client* decides how long the borrow lasts:
 
@@ -211,11 +230,12 @@ path production uses — so the migrations are exercised on every run.
 
 | # | Delta | Why |
 |---|---|---|
-| P1 | This package owns a small fixed-size pool (`PostgresDataSource`) instead of leasing from `PostgresClient` | sketch calls `PostgresClient.leaseConnection()` — which is **private**; the modern client only lends connections inside async closures. The `DataSource` seam requires *synchronous* checkout (Flight Data Core D1: scoped component factories and `FlightTransactionCoordinator.begin` are synchronous). The pool is deliberately thin — eager dial at service start, Mutex free list, prompt checkout-or-throw, replacement loop — and everything protocol-level stays PostgresNIO's. `PostgresClient` is still used where its shape fits: the migrate wiring, and the Flight-free binding product. |
-| P2 | Transaction control statements bridge sync→async by blocking on PostgresNIO's `EventLoopFuture` API | Flight Core makes the sync coordinator synchronous; Postgres I/O is not. Blocking on a future that completes on the connection's NIO event loop is deadlock-free (the event loop never depends on the blocked thread) — unlike bridging through a `Task`, which can exhaust the cooperative pool. Cost: one short round-trip per BEGIN/COMMIT/ROLLBACK. Calling from an event-loop thread is rejected loudly. **The recorded fix landed as Core delta 14 (2026-07-17)**: `PostgresTransactionCoordinator` also conforms to `FlightAsyncTransactionCoordinator`, and `withPostgresScope`/`withPostgresTransactions` bind it as both task-locals — async `@Transactional` methods (the common case) now *await* control statements natively, and the blocking bridge serves only sync `@Transactional` methods. |
-| P3 | `resolve(PostgresConnection.self)` overloads route through the ambient scope | `@Autowired` expands to plain `container.resolve(…)`, which could not resolve scoped components (scoped resolution needs a scope). Concrete overloads in this package out-rank the generic in any module importing it, and consult `Scope.active` (Core delta 11) — making `@Autowired var connection: PostgresConnection` work as written while preserving the captive-dependency guarantee (no ambient scope → loud error). **The proposed general fix landed as Core delta 12 (2026-07-17)**: plain `resolve` now falls back to the ambient scope for every scoped component, so `@Autowired` between app-defined scoped components (a scoped `@Service` over a scoped `@Repository`) works without hand registration. This package's overloads remain — they do type *mapping* (`PostgresConnection` is not itself a registered component; the overload unwraps the scope's `ScopedConnection`), not just scope bridging. |
-| P5 | The pool rolls back connections released with an open transaction | The `@Transactional` expansion pairs begin with commit/rollback on every code path, but a lease stashed past its scope or a torn task could return a connection mid-transaction. Reusing it would leak transaction state across scopes — so release detects it (via coordinator bookkeeping), issues `ROLLBACK` off the release path, and only then repools. Pinned by `leakedTransactionIsRolledBackOnRelease`. |
-| P6 | The `primary` datasource also answers *unqualified* resolution | Flight Data Core's convention is "names are always explicit qualifiers, including `primary`". For the pool/lease/liveness triple this package follows it. But `@Autowired var connection: PostgresConnection` has nowhere to hang a qualifier in the common one-database app, so the primary module additionally registers unqualified aliases for the connection and coordinator. Named datasources must be asked for by name. |
+| P1 | This package owns a small fixed-size pool (`PostgresDataSource`) instead of leasing from `PostgresClient` | The sketch called `PostgresClient.leaseConnection()`, which is **private**; the modern client only lends connections inside async closures. The pool is deliberately thin — eager dial at service start, a `Mutex` free list, checkout that queues up to `checkout_timeout_ms`, and a replacement loop — and everything protocol-level stays PostgresNIO's. `PostgresClient` is still used where its shape fits: the migrate wiring, and the Flight-free binding product. |
+| P2 | A connection is leased for **one operation**, not for a request | `withRepo`/`withConnection` bracket the lease. The alternative — a `.scoped` connection held for the whole request — pinned a connection for as long as the scope lived, which for a WebSocket upgrade meant one connection per open browser tab. Per-operation leasing makes the hold as short as the work. |
+| P3 | Transactions are Hangar's `repo.transaction { }`, not an annotation | A `Repo` fixes `inTransaction` at construction, so an ambient repo built before a unit of work always believed it was outside one — it emitted a literal `COMMIT` when nested, ending the enclosing transaction and making writes durable that the caller meant to roll back. Constructing the repo per operation removes the state that could go stale, and Hangar's own bracket tracks depth and emits savepoints. |
+| P4 | A connection returned mid-transaction is dropped, not reused | Every path through `repo.transaction` pairs begin with commit or rollback, but a torn task could still return a connection with a transaction open, and reusing it would leak that state into the next borrower. `DISCARD ALL` is what catches it: Postgres refuses the statement inside a transaction block, and a connection whose reset fails is closed and replaced rather than repooled. This is why `reset_on_release` defaults to on — turning it off gives up this guard as well as the session-state one. (The pool also carries an explicit rollback-on-release path, unreachable since transactions moved into Hangar, which does not tell the pool when it opens one.) |
+| P5 | `reset_on_release` issues `DISCARD ALL` between borrowers | Session state — `SET`, prepared statements, temp tables, `LISTEN` registrations — outlives a lease otherwise, and the next borrower inherits it. On by default; turn it off only for a pool whose callers are known to leave nothing behind. |
+| P6 | The `primary` datasource also answers *unqualified* resolution | Flight Data Core's convention is that a name is always an explicit qualifier, and for named datasources this package keeps it: with several pools, silence would be guessing. But `@Inject var pool: PostgresDataSource` has nowhere to hang a qualifier in the one-database app, so `PostgresDataModule<PrimaryDataSource>` additionally registers the pool unqualified. Any other name must be asked for by name. |
 
 Toolchain/upstream deltas (the `.eq()` spelling, the parameter-pack
 miscompile workaround, the S1–S4 dialect adaptations) are recorded in

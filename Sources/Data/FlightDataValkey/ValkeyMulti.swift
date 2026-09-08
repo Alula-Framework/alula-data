@@ -2,14 +2,14 @@ import Valkey
 
 /// `MULTI`/`EXEC` under its own honest name.
 ///
-/// This is deliberately **not** `@Transactional`. Valkey's `MULTI`/`EXEC` is
+/// This is deliberately not called a transaction. Valkey's `MULTI`/`EXEC` is
 /// an atomic batch — other clients never observe a point between the queued
 /// commands — but it is *not* a transaction in the SQL sense: no rollback on
 /// logical failure, no isolation of the `BEGIN` kind, and a command that
-/// fails inside `EXEC` does not undo the ones before it. A shared
-/// transaction abstraction would have to lie about one of the two semantics
-/// (Flight Data Core), so the capability ships under a different name
-/// with different semantics:
+/// fails inside `EXEC` does not undo the ones before it. Borrowing the
+/// Postgres driver's `transaction` spelling would have to lie about one of
+/// the two semantics (Flight Data Core), so the capability ships under a
+/// different name with different semantics:
 ///
 /// ```swift
 /// try await valkey.multi { batch in

@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-09-08
+
+Documentation only. No source change, and no version requirement change:
+this package builds unmodified against flight 0.15.0.
+
+### Fixed
+
+- **`Docs/` had not followed the composition migration.** The DocC catalogs
+  were updated when repositories stopped holding connections; the guides were
+  not. `data-postgres.md` taught `@Repository(scope: .scoped)` with an
+  injected `Repo`, `@Transactional`, `withPostgresScope` and
+  `withPostgresTransactions`, and carried a delta table describing transaction
+  coordinators that no longer exist. `data-valkey.md` had the same scoped
+  shape plus `@Autowired var valkey: ValkeyConnection`.
+
+- **Doc comments in shipped source naming removed APIs.**
+  `FlightDataPostgres/Exports.swift` advertised `@Transactional` as part of
+  the surface one import covers; `FlightCache/FlightCaches.swift` described
+  itself as the analogue of Core's `FlightTransactions`, deleted in flight
+  0.13.0; `ValkeyMulti.swift` defined itself against `@Transactional` rather
+  than against the Postgres driver's `transaction`, which does exist.
+
+- **The lean-consumer check** resolves flight 0.14.0 and swift-changeset
+  0.2.0, matching the 0.5.0 release.
+
 ## [0.5.0] - 2026-09-07
 
 Repositories hold the pool, and three defects found by building an

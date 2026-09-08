@@ -6,8 +6,8 @@ The Valkey driver: a pooled `DataSource`, valkey-swift's typed commands, and
 ## Overview
 
 Registering ``ValkeyDataModule`` gives the container a pooled
-``ValkeyDataSource``, so a component acquires a scoped connection the same
-way it would for Postgres:
+``ValkeyDataSource``, and a component leases a connection per operation the
+same way it would for Postgres:
 
 ```yaml
 datasource:
@@ -15,7 +15,7 @@ datasource:
     url: redis://localhost:6379/2      # the path segment is the database index
     pool_size: 10
     checkout_timeout_ms: 5000          # how long a caller queues before failing
-    reset_on_release: true             # clear session state between scopes
+    reset_on_release: true             # clear session state between borrowers
 ```
 
 The key under `datasource:` is `Name.name` from the module's generic parameter
@@ -31,9 +31,25 @@ error on the first command.
 
 The command surface is **valkey-swift's own**, generated from Valkey's command
 specifications — `connection.hset(...)`, `connection.zadd(...)`, and the rest
-— reached directly on the scoped connection. This package does not re-wrap it,
-and adds only two conveniences (`expire(_:after:)` and `zrevrange`) where a documented
-reason exists.
+— reached directly on the leased connection:
+
+```swift
+@Repository
+struct SessionRepository {
+    @Inject var pool: ValkeyDataSource
+
+    func store(_ session: Session, ttl: Duration) async throws {
+        try await pool.withConnection { valkey in
+            try await valkey.hset("session:\(session.id)", data: session.fields)
+            try await valkey.expire("session:\(session.id)", after: ttl)
+        }
+    }
+}
+```
+
+This package does not re-wrap the command surface, and adds only two
+conveniences (`expire(_:after:)` and `zrevrange`) where a documented reason
+exists.
 
 ``ValkeyRawCommand`` is the escape *hatch*, not the primary surface: anything
 the typed surface does not cover — vendor-specific commands, newly-added server
@@ -44,8 +60,8 @@ it is named separately.
 
 There is deliberately no query builder and no cross-store abstraction: Valkey
 and Postgres do not answer the same questions, and a layer pretending otherwise
-serves neither. What is shared is the connection pooling and scoping, which
-genuinely is the same problem.
+serves neither. What is shared is the connection pooling and
+leasing, which genuinely is the same problem.
 
 ## Batches, not transactions
 
@@ -55,10 +71,11 @@ assumption: `MULTI` queues commands and runs them without interleaving. It
 does **not** roll back. A command that fails inside the batch leaves the
 earlier ones applied.
 
-That is why this module does not implement `@Transactional`. Presenting
-`MULTI` as a transaction would make `@Transactional` mean two different
-things depending on which datasource happened to be registered, and the
-failure would surface as data that quietly did not roll back.
+That is why `multi` is named for what it is rather than borrowed from the
+Postgres driver's vocabulary. A shared "transaction" spelling across the two
+stores would mean two different things depending on which datasource was
+registered, and the difference would surface as data that quietly did not
+roll back.
 
 ## Changesets
 
