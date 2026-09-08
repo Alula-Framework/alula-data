@@ -25,23 +25,23 @@ public enum TestContainer {
         }
     }
 
+    /// The closure throws because a module that takes its configuration can
+    /// fail to build — `try PostgresDataModule(configuration:)` in a block is
+    /// the ordinary case now.
     public static func build(
         configuration: Configuration = Configuration(),
-        @ModuleBuilder _ modules: () -> [any FlightModule]
+        @ModuleBuilder _ modules: () throws -> [any FlightModule]
     ) throws -> Container {
-        let instances = modules()
+        let instances = try modules()
         let container = Container()
         container.register(Configuration.self, scope: .singleton) { _ in configuration }
 
-        // Same ordering rules as bootstrap (Flight Core step 5), with the
-        // caller's ready-made instances substituted where types match.
-        let byType = Dictionary(
-            instances.map { (ObjectIdentifier(type(of: $0)), $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        // Same ordering rules as bootstrap (Flight Core step 5). Transitive
+        // dependencies the block never named are built here, which is where a
+        // module that takes initializer parameters is refused — with a message
+        // saying to add the built instance to the block.
         let ordered = try Flight.resolveModuleOrder(instances.map { type(of: $0) })
-        for moduleType in ordered {
-            let module = byType[ObjectIdentifier(moduleType)] ?? moduleType.init()
+        for module in try Flight.instantiateModules(ordered, supplying: instances) {
             try module.configure(container)
         }
 

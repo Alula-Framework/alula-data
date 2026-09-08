@@ -24,7 +24,9 @@ struct ModuleRegistrationTests {
     private func build() throws -> Container {
         try TestContainer.build(configuration: Self.offlineConfiguration) {
             TestAppModule()
-            PostgresDataModule<Analytics>()
+            // Both pools take their configuration now, so both are built.
+            try PostgresDataModule<PrimaryDataSource>(configuration: Self.offlineConfiguration)
+            try PostgresDataModule<Analytics>(configuration: Self.offlineConfiguration)
         }
     }
 
@@ -62,23 +64,21 @@ struct ModuleRegistrationTests {
                 "a repository holds the pool, not a connection, so it is a singleton")
     }
 
-    @Test func malformedURLFailsAtFreeze() {
-        // posture: a bad URL is a bootstrap failure, not a first-query one.
+    @Test func malformedURLFailsAtComposition() {
+        // posture: a bad URL is a bootstrap failure, not a first-query one —
+        // and now it fails when the module is built, which is earlier than
+        // the freeze() it used to fail at.
         let configuration = Configuration(values: [
             DataSourceConfigKey.url(datasource: "primary"): "postgres://localhost:5432"
         ])
         #expect(throws: PostgresDataSourceURLError.missingDatabase(datasource: "primary")) {
-            try TestContainer.build(configuration: configuration) {
-                PostgresDataModule<PrimaryDataSource>()
-            }
+            try PostgresDataModule<PrimaryDataSource>(configuration: configuration)
         }
     }
 
-    @Test func missingURLFailsAtFreeze() {
+    @Test func missingURLFailsAtComposition() {
         #expect(throws: (any Error).self) {
-            try TestContainer.build(configuration: Configuration()) {
-                PostgresDataModule<PrimaryDataSource>()
-            }
+            try PostgresDataModule<PrimaryDataSource>(configuration: Configuration())
         }
     }
 
@@ -106,7 +106,8 @@ struct ModuleRegistrationTests {
     }
 
     @Test func moduleProvidesPoolService() throws {
-        let module = PostgresDataModule<PrimaryDataSource>()
+        let module = try PostgresDataModule<PrimaryDataSource>(
+            configuration: Self.offlineConfiguration)
         let container = Container()
         container.register(Configuration.self, scope: .singleton) { _ in Self.offlineConfiguration }
         try module.configure(container)

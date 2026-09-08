@@ -29,32 +29,43 @@ import ServiceLifecycle
 /// `service` is the pool's `run()`: dial at start (Flight Core step 9 —
 /// no request served before the pool is live), replace broken connections
 /// while running, drain on graceful shutdown.
-public final class PostgresDataModule<Name: DataSourceName>: FlightModule {
-    /// Stashed during `configure` so `service` can resolve the pool lazily —
-    /// the same pattern as `FlightWebModule` (modules cannot resolve during
-    /// the registration phase, Flight Core).
-    private var container: Container?
+public struct PostgresDataModule<Name: DataSourceName>: FlightModule {
 
-    public init() {}
+    /// The pool. A repository holds this, and so does the component graph —
+    /// which is why it is a stored property: the composition root reads it
+    /// here and passes it as a graph root.
+    public let dataSource: PostgresDataSource
+
+    /// A bad URL or pool size fails composition — earlier than the `freeze()`
+    /// factory this used to be, and much earlier than the first query.
+    public init(configuration: Configuration) throws {
+        let name = Name.name
+        let settings = try DataSourceSettings.load(name: name, from: configuration)
+        // Defaults on: a pooled connection is a session, and a session that
+        // remembers `SET ROLE` across scopes is a cross-tenant read waiting
+        // to happen.
+        let reset =
+            try configuration.getIfPresent(
+                "datasource.\(name).reset_on_release", as: Bool.self) ?? true
+        self.dataSource = try PostgresDataSource(settings: settings, resetOnRelease: reset)
+    }
+
+    /// This module takes its configuration, so it cannot be built from its
+    /// type — every supported path checks this and throws first.
+    public static var isTypeConstructible: Bool { false }
+
+    public init() {
+        preconditionFailure(
+            "PostgresDataModule takes its configuration in init(configuration:), so it cannot be "
+                + "instantiated from its type. Pass `composedBy: flightComposeModules` to "
+                + "Flight.run — `flight new` writes that argument — or construct the module "
+                + "yourself and use the entry point taking module instances.")
+    }
 
     public func configure(_ container: Container) throws {
-        self.container = container
         let name = Name.name
-
-        // The pool + lease + liveness triple. The factory runs at freeze(),
-        // where Configuration is readable — a bad URL or pool size fails
-        // bootstrap, never the first query (Flight Data Core).
-        container.register(dataSource: PostgresDataSource.self, name: name) { container in
-            let configuration = try container.resolve(Configuration.self)
-            let settings = try DataSourceSettings.load(name: name, from: configuration)
-            // Defaults on: a pooled connection is a session, and a session
-            // that remembers `SET ROLE` across scopes is a cross-tenant read
-            // waiting to happen.
-            let reset =
-                try configuration.getIfPresent(
-                    "datasource.\(name).reset_on_release", as: Bool.self) ?? true
-            return try PostgresDataSource(settings: settings, resetOnRelease: reset)
-        }
+        let dataSource = self.dataSource
+        container.register(dataSource: PostgresDataSource.self, name: name) { _ in dataSource }
 
         // Only the pool is a component. A `PostgresConnection` is not: it is
         // leased for one operation through `pool.withConnection { }` and
@@ -75,14 +86,12 @@ public final class PostgresDataModule<Name: DataSourceName>: FlightModule {
         // must still be asked for by name — with several pools, silence would
         // be guessing (Flight Core's qualifier posture).
         if name == PrimaryDataSource.name {
-            container.register(PostgresDataSource.self, scope: .singleton) { c in
-                try c.resolve(PostgresDataSource.self, qualifier: name)
-            }
+            container.register(PostgresDataSource.self, scope: .singleton) { _ in dataSource }
         }
     }
 
     public var service: (any Service)? {
-        container.map { PostgresPoolService<Name>(container: $0) }
+        PostgresPoolService(dataSource: dataSource)
     }
 
     /// A pool is what everything else borrows from, so it starts first and
@@ -93,13 +102,17 @@ public final class PostgresDataModule<Name: DataSourceName>: FlightModule {
     public var serviceShutdownPhase: ServiceShutdownPhase { .infrastructure }
 }
 
-/// The pool's ServiceLifecycle wrapper: resolves the datasource post-freeze
-/// and runs it (dial → maintain → drain).
-struct PostgresPoolService<Name: DataSourceName>: Service {
-    let container: Container
+/// The pool's ServiceLifecycle wrapper: runs it (dial → maintain → drain).
+///
+/// It used to hold a `Container` and resolve the datasource post-freeze,
+/// because the module registered a factory and its service is collected
+/// during `configure`. The module owns the pool now, so the service is handed
+/// the thing it runs — and no longer needs the `Name` parameter that existed
+/// only to rebuild the qualifier for that lookup.
+struct PostgresPoolService: Service {
+    let dataSource: PostgresDataSource
 
     func run() async throws {
-        let source = try container.resolve(PostgresDataSource.self, qualifier: Name.name)
-        try await source.run()
+        try await dataSource.run()
     }
 }
