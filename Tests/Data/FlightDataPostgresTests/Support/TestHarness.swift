@@ -28,25 +28,43 @@ actor TestSchema {
     }
 }
 
-/// Builds a frozen container (module DAG order, real macro-registered
-/// repositories), starts the pool by hand — tests drive the lifecycle a
-/// `ServiceGroup` would — runs `body`, and drains the pool.
+/// The value form of the old test container: the pool the module built and
+/// the repositories that hold it, constructed directly rather than resolved.
+struct PostgresTestApp {
+    let source: PostgresDataSource
+    var pool: PostgresDataSource { source }
+    let users: UserRepository
+    let ledger: LedgerRepository
+    /// The datasource's liveness probe — what the module provides and the
+    /// composition root aggregates for Actuator.
+    let liveness: DataSourceLiveness
+
+    init(source: PostgresDataSource) {
+        self.source = source
+        self.users = UserRepository(pool: source)
+        self.ledger = LedgerRepository(pool: source)
+        self.liveness = DataSourceLiveness(datasourceName: PrimaryDataSource.name) { [source] in
+            try await source.ping()
+        }
+    }
+}
+
+/// Builds the store module (its pool and repositories), starts the pool by
+/// hand — tests drive the lifecycle a `ServiceGroup` would — runs `body`, and
+/// drains the pool.
 func withPostgresContainer<T>(
     poolSize: Int = 4,
     resetOnRelease: Bool = true,
-    _ body: (Container, PostgresDataSource) async throws -> T
+    _ body: (PostgresTestApp, PostgresDataSource) async throws -> T
 ) async throws -> T {
     try await TestSchema.shared.ensure()
-    let container = try TestContainer.build(
+    let module = try PostgresDataModule<PrimaryDataSource>(
         configuration: try TestDatabase.configuration(
-            poolSize: poolSize, resetOnRelease: resetOnRelease)
-    ) {
-        TestAppModule()
-    }
-    let source = try container.resolve(PostgresDataSource.self, qualifier: PrimaryDataSource.name)
+            poolSize: poolSize, resetOnRelease: resetOnRelease))
+    let source = module.dataSource
     try await source.start()
     do {
-        let result = try await body(container, source)
+        let result = try await body(PostgresTestApp(source: source), source)
         await source.shutdown()
         return result
     } catch {

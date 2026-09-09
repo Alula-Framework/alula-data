@@ -24,19 +24,19 @@ import Testing
 extension PostgresIntegrationSuite {
 @Suite("Transactions against Postgres")
 struct TransactionIntegrationTests {
-    private func seedAccounts(_ container: Container, balances: [String: Int]) async throws {
-        let ledger = try container.resolve(LedgerRepository.self)
+    private func seedAccounts(_ app: PostgresTestApp, balances: [String: Int]) async throws {
+        let ledger = app.ledger
         for (id, balance) in balances {
             try await ledger.seed(Account(id: id, balance: balance))
         }
     }
 
     @Test func successfulTransferCommits() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
-            try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
+            try await seedAccounts(app, balances: ["checking": 100, "savings": 0])
 
-            let ledger = try container.resolve(LedgerRepository.self)
+            let ledger = app.ledger
             try await ledger.transfer(40, from: "checking", to: "savings")
 
             // Read back on a fresh lease — very likely a different connection
@@ -48,11 +48,11 @@ struct TransactionIntegrationTests {
     }
 
     @Test func thrownErrorRollsBackEverything() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
-            try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
+            try await seedAccounts(app, balances: ["checking": 100, "savings": 0])
 
-            let ledger = try container.resolve(LedgerRepository.self)
+            let ledger = app.ledger
             await #expect(throws: LedgerError.insufficientFunds(account: "deliberate-failure")) {
                 try await ledger.transferThenFail(40, from: "checking", to: "savings")
             }
@@ -64,11 +64,11 @@ struct TransactionIntegrationTests {
     }
 
     @Test func nestedFailureRollsBackToSavepointOnly() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
-            try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
+            try await seedAccounts(app, balances: ["checking": 100, "savings": 0])
 
-            let ledger = try container.resolve(LedgerRepository.self)
+            let ledger = app.ledger
             // The middle transfer exceeds the balance: its savepoint rolls
             // back while the outer transaction and its siblings commit.
             let applied = try await ledger.batchTransfer([
@@ -94,12 +94,12 @@ struct TransactionIntegrationTests {
     @Test func uncommittedWorkIsInvisibleToOtherConnections() async throws {
         struct RollbackProbe: Error {}
 
-        try await withPostgresContainer(poolSize: 4) { container, source in
+        try await withPostgresContainer(poolSize: 4) { app, source in
             try await cleanTables(source)
-            try await seedAccounts(container, balances: ["checking": 100, "savings": 0])
+            try await seedAccounts(app, balances: ["checking": 100, "savings": 0])
 
-            let ledger = try container.resolve(LedgerRepository.self)
-            let pool = try container.resolve(PostgresDataSource.self, qualifier: "primary")
+            let ledger = app.ledger
+            let pool = app.pool
 
             do {
                 try await pool.withRepo { repo in

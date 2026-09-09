@@ -36,22 +36,6 @@ final class UserRepository: Sendable {
     }
 }
 
-/// Registers `UserRepository` as a `.singleton` holding the pool — the
-/// pattern every store package's repositories follow.
-struct UserRepositoryModule: FlightModule {
-    static var dependencies: [any FlightModule.Type] {
-        [InMemoryDataModule<PrimaryDataSource>.self]
-    }
-
-    func configure(_ container: Container) throws {
-        container.register(UserRepository.self, scope: .singleton, stereotype: .repository) { c in
-            UserRepository(
-                pool: try c.resolve(InMemoryDataSource.self, qualifier: PrimaryDataSource.name)
-            )
-        }
-    }
-}
-
 // MARK: - Named datasources
 
 enum Analytics: DataSourceName {

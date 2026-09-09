@@ -96,18 +96,4 @@ struct SessionRepository {
     }
 }
 
-// MARK: - Module wiring
 
-/// The application module a real app would write: repositories registered by
-/// their macro-generated thunks, depending on the Valkey module.
-final class ValkeyTestAppModule: FlightModule {
-    static var dependencies: [any FlightModule.Type] {
-        [ValkeyDataModule<PrimaryDataSource>.self]
-    }
-
-    init() {}
-
-    func configure(_ container: Container) throws {
-        try SessionRepository._flightRegister(container)
-    }
-}

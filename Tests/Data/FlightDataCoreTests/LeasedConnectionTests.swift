@@ -19,19 +19,15 @@ import Testing
 @Suite("Leased connections")
 struct LeasedConnectionTests {
 
-    private func makeContainer(poolSize: Int = 4) throws -> (Container, InMemoryDataSource) {
-        let source = InMemoryDataSource(poolSize: poolSize)
-        let container = Container()
-        container.register(dataSource: source)
-        try container.freeze()
-        return (container, source)
+    private func makeSource(poolSize: Int = 4) -> InMemoryDataSource {
+        InMemoryDataSource(poolSize: poolSize)
     }
 
     // MARK: Lease lifetime
 
     @Test("nothing leaves the pool until an operation runs")
     func checkoutIsDeferredUntilWork() async throws {
-        let (_, source) = try makeContainer()
+        let source = makeSource()
         #expect(source.activeCheckouts == 0)
         #expect(source.totalCheckouts == 0)
 
@@ -43,7 +39,7 @@ struct LeasedConnectionTests {
 
     @Test("the connection returns when the body returns")
     func connectionReturnsOnSuccess() async throws {
-        let (_, source) = try makeContainer()
+        let source = makeSource()
 
         try await source.withConnection { connection in
             #expect(source.activeCheckouts == 1, "held for the duration of the body")
@@ -59,7 +55,7 @@ struct LeasedConnectionTests {
     /// now it is `withConnection`'s error path.
     @Test("the connection returns even when the body throws")
     func connectionReturnsOnThrow() async throws {
-        let (_, source) = try makeContainer()
+        let source = makeSource()
 
         struct Boom: Error {}
         await #expect(throws: Boom.self) {
@@ -72,7 +68,7 @@ struct LeasedConnectionTests {
 
     @Test("a returned connection is reused rather than a new one created")
     func returnedConnectionIsReused() async throws {
-        let (_, source) = try makeContainer()
+        let source = makeSource()
 
         try await source.withConnection { _ in }
         let afterFirst = source.connectionsCreated
@@ -89,7 +85,7 @@ struct LeasedConnectionTests {
     /// with a single `withConnection` — or a transaction.
     @Test("two operations are two leases; one bracket is one lease")
     func operationsDoNotShareImplicitly() async throws {
-        let (_, source) = try makeContainer()
+        let source = makeSource()
 
         try await source.withConnection { _ in }
         try await source.withConnection { _ in }
@@ -104,7 +100,7 @@ struct LeasedConnectionTests {
 
     @Test("concurrent operations get distinct connections")
     func concurrentOperationsAreIsolated() async throws {
-        let (_, source) = try makeContainer(poolSize: 4)
+        let source = makeSource(poolSize: 4)
 
         try await withThrowingTaskGroup(of: Int.self) { group in
             for _ in 0..<3 {
@@ -129,10 +125,8 @@ struct LeasedConnectionTests {
 
     @Test("a repository leases per operation and holds nothing between them")
     func repositoryLeasesPerOperation() async throws {
-        let (container, source) = try makeContainer()
-        let repository = UserRepository(
-            pool: try container.resolve(InMemoryDataSource.self, qualifier: PrimaryDataSource.name)
-        )
+        let source = makeSource()
+        let repository = UserRepository(pool: source)
 
         try await repository.save("ada")
         #expect(source.activeCheckouts == 0, "nothing held between operations")
@@ -143,10 +137,8 @@ struct LeasedConnectionTests {
 
     @Test("work through a repository lands on the connection it leased")
     func repositoryWorkLandsOnItsLease() async throws {
-        let (container, source) = try makeContainer(poolSize: 1)
-        let repository = UserRepository(
-            pool: try container.resolve(InMemoryDataSource.self, qualifier: PrimaryDataSource.name)
-        )
+        let source = makeSource(poolSize: 1)
+        let repository = UserRepository(pool: source)
 
         try await repository.saveBoth("ada", "grace")
 
@@ -163,10 +155,6 @@ struct LeasedConnectionTests {
     func namedDatasourcesAreIndependent() async throws {
         let primary = InMemoryDataSource(name: PrimaryDataSource.name, poolSize: 2)
         let analytics = InMemoryDataSource(name: Analytics.name, poolSize: 2)
-        let container = Container()
-        container.register(dataSource: primary, name: PrimaryDataSource.name)
-        container.register(dataSource: analytics, name: Analytics.name)
-        try container.freeze()
 
         try await primary.withConnection { p in
             #expect(primary.activeCheckouts == 1)

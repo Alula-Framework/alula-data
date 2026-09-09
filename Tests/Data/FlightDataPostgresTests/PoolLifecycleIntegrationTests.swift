@@ -35,14 +35,13 @@ struct PostgresConformanceTests {
 struct PoolLifecycleIntegrationTests {
     @Test func moduleServiceRunsAndDrainsThePool() async throws {
         try await TestSchema.shared.ensure()
-        let container = try TestContainer.build(
-            configuration: try TestDatabase.configuration(poolSize: 2)
-        ) {
-            TestAppModule()
-        }
+        // The module owns the pool; a repository holds it. Built directly,
+        // the way the composition root would.
+        let module = try PostgresDataModule<PrimaryDataSource>(
+            configuration: try TestDatabase.configuration(poolSize: 2))
         // Drive the pool's run() the way bootstrap's ServiceGroup drives the
         // module's service (start → serve → cancel).
-        let source = try container.resolve(PostgresDataSource.self, qualifier: "primary")
+        let source = module.dataSource
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { try await source.run() }
@@ -53,7 +52,7 @@ struct PoolLifecycleIntegrationTests {
             }
             #expect(source.establishedConnections == 2)
 
-            let repo = try container.resolve(UserRepository.self)
+            let repo = UserRepository(pool: source)
             #expect(try await repo.find(byEmail: "nobody@example.com") == nil)
 
             group.cancelAll()

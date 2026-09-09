@@ -87,25 +87,39 @@ enum TestServerError: Error {
     case timedOut(String)
 }
 
-/// Builds a frozen container (module DAG order, real macro-registered
-/// repositories), starts the pool by hand — tests drive the lifecycle a
-/// `ServiceGroup` would — flushes the test database, runs `body`, and drains
-/// the pool.
+/// The value form of the old test container: the pool the module built, the
+/// repository that holds it, and the module's liveness probe — constructed
+/// directly rather than resolved.
+struct ValkeyTestApp {
+    let source: ValkeyDataSource
+    var pool: ValkeyDataSource { source }
+    let sessions: SessionRepository
+    let liveness: DataSourceLiveness
+
+    init(source: ValkeyDataSource) {
+        self.source = source
+        self.sessions = SessionRepository(pool: source)
+        self.liveness = DataSourceLiveness(datasourceName: PrimaryDataSource.name) { [source] in
+            try await source.ping()
+        }
+    }
+}
+
+/// Builds the store module (its pool and repository), starts the pool by hand
+/// — tests drive the lifecycle a `ServiceGroup` would — flushes the test
+/// database, runs `body`, and drains the pool.
 func withValkeyContainer<T>(
     _ server: TestServer,
     poolSize: Int = 4,
-    _ body: (Container, ValkeyDataSource) async throws -> T
+    _ body: (ValkeyTestApp, ValkeyDataSource) async throws -> T
 ) async throws -> T {
-    let container = try TestContainer.build(
-        configuration: try server.configuration(poolSize: poolSize)
-    ) {
-        ValkeyTestAppModule()
-    }
-    let source = try container.resolve(ValkeyDataSource.self, qualifier: PrimaryDataSource.name)
+    let module = try ValkeyDataModule<PrimaryDataSource>(
+        configuration: try server.configuration(poolSize: poolSize))
+    let source = module.dataSource
     try await source.start()
     do {
         try await flush(source)
-        let result = try await body(container, source)
+        let result = try await body(ValkeyTestApp(source: source), source)
         await source.shutdown()
         return result
     } catch {
