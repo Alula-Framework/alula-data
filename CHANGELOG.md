@@ -12,6 +12,19 @@ an earlier flight.
 
 ### Changed
 
+- **Breaking.** `FlightCacheModule` takes an optional `adapter: (any Cache)?`
+  and no longer discovers one by presence. It used to register an unqualified
+  `(any Cache)` whose factory resolved a store registered under
+  `FlightCacheModule.storeQualifier`, catching `.notRegistered` to mean
+  in-memory — a runtime scan answering a question about how the application was
+  composed, with the silent single-node fallback that pattern always has.
+  `FlightCacheValkeyModule` now *provides* `cache: any Cache`, and the
+  composition root hands it to `FlightCacheModule`; both are listed in
+  `modules:`. `flight new` writes the `composedBy:` argument. Both modules
+  take their configuration, so a bad URL or LRU bound fails composition rather
+  than at `freeze()`, and neither can be built from its type.
+
+
 - **Breaking.** `FlightPubSubValkeyModule` is now a *dependency* of
   `FlightPubSubModule` rather than a dependent, and takes its configuration:
 

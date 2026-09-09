@@ -16,7 +16,7 @@ holds a `ValkeyClient` — the driver's own pool, already a ServiceLifecycle
 |---|---|
 | `ValkeyCache` | Fail-open `Cache` over `ValkeyClient` — every error is a logged, counted miss or no-op; consecutive-failure breaker with a half-open probe, fed only by failures that actually indicate store ill-health (CV2) |
 | `ValkeyCacheSettings` / `ValkeyCacheURL` | `cache.valkey.*` config (its own root — caching is not adopting Valkey as a data store); both timeout phases (CV1), pool sizing; `valkey://`/`redis://` exact synonyms, TLS variants, auth, database |
-| `FlightCacheValkeyModule` | Registers the store under `FlightCacheModule.storeQualifier` (compose-by-presence) and runs the client pool as its service |
+| `FlightCacheValkeyModule` | Provides `cache: any Cache`, which `FlightCacheModule` takes as its adapter, and runs the client pool as its service |
 
 ## Keys, and sharing one Valkey
 
@@ -50,9 +50,13 @@ breaker correctly stays closed, because the pool's breaker owns that case.
 ## Using it
 
 ```swift
-try await Flight.bootstrap(configuration: .load(), modules: [
-    FlightCacheValkeyModule.self,   // pulls in FlightCacheModule via dependencies
-])
+try await Flight.run(
+    configuration: .load(),
+    modules: [FlightCacheValkeyModule.self, FlightCacheModule.self],
+    composedBy: flightComposeModules)
+// The composition root hands the Valkey store to FlightCacheModule as its
+// adapter — the direction the inversion established. `flight new` writes the
+// `composedBy:` argument.
 ```
 
 ```yaml

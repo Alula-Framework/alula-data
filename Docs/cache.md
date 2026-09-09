@@ -14,7 +14,7 @@ in place of runtime proxies**, on top of Flight Core.
 | `CacheRuntime` + `FlightCaches` | The runtime the expansions call, reached through a `FlightTransactions`-style seam (task-local override → installed runtime → warn-once no-op) |
 | `SingleFlight` | Local stampede protection — leader computes inline, waiters receive the encoded bytes, errors propagate, cancellation hands leadership over |
 | `InMemoryCache` | Actor-guarded LRU with TTL, bounded by default; hit, insert and evict are all O(1) |
-| `FlightCacheModule` | Compose-by-presence — an adapter registered under `FlightCacheModule.storeQualifier` wins, else in-memory |
+| `FlightCacheModule` | Takes an optional `adapter: (any Cache)?` — the adapter module provides it, else in-memory |
 | `FlightCacheTesting` | `RecordingCache` — recording, seedable, `misbehave()`-able store for consumer tests |
 
 The Valkey/Redis adapter is [`FlightCacheValkey`](cache-valkey.md), a target
@@ -26,10 +26,13 @@ resolves none of its dependencies.
 ## Using it
 
 ```swift
-try await Flight.bootstrap(configuration: .load(), modules: [
-    FlightCacheModule.self,          // in-memory by default
-    // FlightCacheValkeyModule.self, // …or the Valkey/Redis store
-])
+try await Flight.run(
+    configuration: .load(),
+    modules: [
+        FlightCacheModule.self,          // in-memory by default
+        // FlightCacheValkeyModule.self, // …or the Valkey/Redis store
+    ],
+    composedBy: flightComposeModules)
 ```
 
 ```swift

@@ -27,66 +27,95 @@ import FlightCore
 /// No `service`: the in-memory store has no long-running work. Adapter
 /// modules with a connection (the Valkey client) expose their own.
 public struct FlightCacheModule: FlightModule {
-    /// Adapter modules register their store as `(any Cache).self` under
-    /// this qualifier; `FlightCacheModule` composes by its presence.
+    /// Adapter modules expose their store; this module takes it. It used to
+    /// be registered under this qualifier for the base module to *discover* by
+    /// catching `.notRegistered` — the compose-by-presence anti-pattern PubSub
+    /// and Presence shed. Kept only because a stored `(any Cache)` is a
+    /// separate registration a hand-wired test might still reach for.
     public static let storeQualifier = "flight.cache.store"
 
-    public init() {}
+    /// The process-wide runtime `@Cacheable` methods are served from — store,
+    /// TTL policy, codec, single-flight, metrics. The one public value this
+    /// module provides; typed distinctly from `(any Cache)` on purpose, so it
+    /// does not collide in composition with an adapter module that provides a
+    /// store (the Presence lesson, D17).
+    public let runtime: CacheRuntime
 
+    /// The store the runtime wraps — the adapter when one was supplied, the
+    /// in-memory LRU otherwise. Private: see `runtime`.
+    private let store: any Cache
+
+    /// The in-memory store, always built so `InMemoryCache.self` resolves and
+    /// a bad LRU bound fails composition regardless of the adapter.
+    private let inMemory: InMemoryCache
+
+    /// - Parameters:
+    ///   - adapter: A distributed cache, from an adapter module. Nil means the
+    ///     in-memory store — the single-instance case, and the default.
+    ///   - codec: The wire format, when the deployment chose one.
+    ///
+    /// Whether there is an adapter is a fact about how the application was
+    /// composed, so it is a parameter rather than a container probe.
+    public init(
+        configuration: Configuration,
+        adapter: (any Cache)? = nil,
+        codec: (any CacheCodec)? = nil
+    ) throws {
+        // Always built — a bad `cache.memory.max_entries` fails composition
+        // whether or not an adapter is present, exactly as the eager
+        // freeze()-time factory used to. It is the store when no adapter was
+        // supplied, and the value the `InMemoryCache` registration serves
+        // either way.
+        let maxEntries =
+            try configuration.getIfPresent(CacheConfigKey.memoryMaxEntries, as: Int.self)
+            ?? InMemoryCache.defaultMaxEntries
+        guard maxEntries > 0 else {
+            throw CacheConfigurationError.invalidMaxEntries(maxEntries)
+        }
+        let inMemory = InMemoryCache(maxEntries: maxEntries)
+        self.inMemory = inMemory
+
+        if adapter == nil {
+            // Configuration naming an adapter nobody loaded would otherwise
+            // give every instance its own private cache, the fallback working
+            // per node until two users read different numbers.
+            try configuration.requireNoUnloadedAdapter(
+                feature: "the cache",
+                candidates: [
+                    AdapterCandidate(
+                        configurationKey: ValkeyCacheConfigKeyProbe.url,
+                        module: "FlightCacheValkeyModule")
+                ])
+        }
+        let store: any Cache = adapter ?? inMemory
+        self.store = store
+        self.runtime = try CacheRuntime(
+            store: store, configuration: configuration, codec: codec ?? JSONCacheCodec())
+    }
+
+    /// This module takes its configuration, so it cannot be built from its
+    /// type — every supported path checks this and throws first.
+    public static var isTypeConstructible: Bool { false }
+
+    public init() {
+        preconditionFailure(
+            "FlightCacheModule takes its configuration in init(configuration:adapter:), so it "
+                + "cannot be instantiated from its type. Pass `composedBy: flightComposeModules` "
+                + "to Flight.run — `flight new` writes that argument — or construct the module "
+                + "yourself and use the entry point taking module instances.")
+    }
+
+    /// Projects what this module holds, and installs the runtime into the
+    /// process-wide `FlightCaches` seam that `@Cacheable` reads. Nothing is
+    /// constructed here — the runtime exists before any container does.
     public func configure(_ container: Container) throws {
-        container.register(InMemoryCache.self, scope: .singleton) { container in
-            let configuration = try container.resolve(Configuration.self)
-            let maxEntries =
-                try configuration.getIfPresent(CacheConfigKey.memoryMaxEntries, as: Int.self)
-                ?? InMemoryCache.defaultMaxEntries
-            guard maxEntries > 0 else {
-                throw CacheConfigurationError.invalidMaxEntries(maxEntries)
-            }
-            return InMemoryCache(maxEntries: maxEntries)
-        }
-
-        container.register((any Cache).self, scope: .singleton) { container in
-            do {
-                return try container.resolve((any Cache).self, qualifier: Self.storeQualifier)
-            } catch let error as ResolutionError {
-                // Absent adapter = in-memory deployment, the common case.
-                // Any other resolution failure is a real wiring bug.
-                guard case .notRegistered = error else { throw error }
-                // So is configuration naming an adapter nobody loaded: the
-                // fallback would work, per node, and the first symptom would
-                // be two users reading different numbers.
-                try container.resolve(Configuration.self).requireNoUnloadedAdapter(
-                    feature: "the cache",
-                    candidates: [
-                        AdapterCandidate(
-                            configurationKey: ValkeyCacheConfigKeyProbe.url,
-                            module: "FlightCacheValkeyModule")
-                    ])
-                return try container.resolve(InMemoryCache.self)
-            }
-        }
-
-        container.register(CacheRuntime.self, scope: .singleton) { container in
-            // The codec is resolved, not defaulted in place. `CacheCodec` is
-            // documented as the seam for choosing a wire format, but nothing
-            // read it — the runtime's default parameter meant an application
-            // could register a codec and never find out it was ignored.
-            let codec: any CacheCodec
-            do {
-                codec = try container.resolve((any CacheCodec).self)
-            } catch let error as ResolutionError {
-                guard case .notRegistered = error else { throw error }
-                codec = JSONCacheCodec()
-            }
-
-            let runtime = try CacheRuntime(
-                store: try container.resolve((any Cache).self),
-                configuration: try container.resolve(Configuration.self),
-                codec: codec
-            )
-            FlightCaches.install(runtime)
-            return runtime
-        }
+        let store = self.store
+        let runtime = self.runtime
+        let inMemory = self.inMemory
+        container.register(InMemoryCache.self, scope: .singleton) { _ in inMemory }
+        container.register((any Cache).self, scope: .singleton) { _ in store }
+        container.register(CacheRuntime.self, scope: .singleton) { _ in runtime }
+        FlightCaches.install(runtime)
     }
 }
 

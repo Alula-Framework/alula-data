@@ -11,25 +11,22 @@ import FlightCacheTesting
 @Suite("FlightCacheModule — wiring", .serialized)
 struct ModuleTests {
 
-    /// The adapter-module contract from, in miniature: register the
-    /// store under the well-known qualifier, depend on FlightCacheModule.
-    final class RecordingAdapterModule: FlightModule {
-        static var dependencies: [any FlightModule.Type] { [FlightCacheModule.self] }
-        init() {}
-        func configure(_ container: Container) throws {
-            container.register(
-                (any Cache).self, qualifier: FlightCacheModule.storeQualifier, scope: .singleton
-            ) { _ in RecordingCache() }
-        }
+    /// The adapter-module contract in miniature: *provide* a store. It used
+    /// to register one under the well-known qualifier for FlightCacheModule
+    /// to discover; now FlightCacheModule takes it.
+    struct RecordingAdapterModule: FlightModule {
+        let cache: any Cache = RecordingCache()
+        func configure(_ container: Container) throws {}
     }
 
     @Test("without an adapter module, the in-memory store is the cache")
     func inMemoryDefault() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
+            let configuration = Configuration(values: ["cache.memory.max_entries": "5"])
             let application = try Flight.assemble(
-                configuration: Configuration(values: ["cache.memory.max_entries": "5"]),
-                modules: [FlightCacheModule.self])
+                configuration: configuration,
+                modules: [try FlightCacheModule(configuration: configuration)])
             let store = try application.container.resolve((any Cache).self)
             let memory = try #require(store as? InMemoryCache)
             #expect(memory.maxEntries == 5)
@@ -41,9 +38,14 @@ struct ModuleTests {
     func adapterComposesByPresence() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
+            let configuration = Configuration()
+            let adapter = RecordingAdapterModule()
             let application = try Flight.assemble(
-                configuration: Configuration(),
-                modules: [FlightCacheModule.self, RecordingAdapterModule.self])
+                configuration: configuration,
+                modules: [
+                    adapter,
+                    try FlightCacheModule(configuration: configuration, adapter: adapter.cache),
+                ])
             let store = try application.container.resolve((any Cache).self)
             #expect(store is RecordingCache)
             #expect(FlightCaches.isInstalled)
@@ -55,9 +57,8 @@ struct ModuleTests {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
             #expect(throws: (any Error).self) {
-                _ = try Flight.assemble(
-                    configuration: Configuration(values: ["cache.memory.max_entries": "0"]),
-                    modules: [FlightCacheModule.self])
+                _ = try FlightCacheModule(
+                    configuration: Configuration(values: ["cache.memory.max_entries": "0"]))
             }
         }
     }
@@ -106,21 +107,24 @@ struct CacheCodecSeamTests {
         }
     }
 
-    /// Registers a codec the way an application would: its own module.
+    /// Provides a codec the way an application would: its own module.
     struct MarkerCodecModule: FlightModule {
-        static var dependencies: [any FlightModule.Type] { [FlightCacheModule.self] }
-        func configure(_ container: Container) throws {
-            container.register((any CacheCodec).self, scope: .singleton) { _ in MarkerCodec() }
-        }
+        let codec: any CacheCodec = MarkerCodec()
+        func configure(_ container: Container) throws {}
     }
 
     @Test("an application's registered codec is the one the runtime uses")
     func registeredCodecIsUsed() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
+            let configuration = Configuration()
+            let codecModule = MarkerCodecModule()
             let application = try Flight.assemble(
-                configuration: Configuration(),
-                modules: [FlightCacheModule.self, MarkerCodecModule.self])
+                configuration: configuration,
+                modules: [
+                    codecModule,
+                    try FlightCacheModule(configuration: configuration, codec: codecModule.codec),
+                ])
             let runtime = try application.container.resolve(CacheRuntime.self)
             _ = try await runtime.cacheable(namespace: "codec", parts: ["1"], ttl: .seconds(60)) { 42 }
 
@@ -134,8 +138,10 @@ struct CacheCodecSeamTests {
     func defaultCodecIsJSON() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
+            let configuration = Configuration()
             let application = try Flight.assemble(
-                configuration: Configuration(), modules: [FlightCacheModule.self])
+                configuration: configuration,
+                modules: [try FlightCacheModule(configuration: configuration)])
             let runtime = try application.container.resolve(CacheRuntime.self)
             _ = try await runtime.cacheable(namespace: "codec", parts: ["2"], ttl: .seconds(60)) { 42 }
 
@@ -162,7 +168,7 @@ struct UnloadedCacheAdapterTests {
             let configuration = Configuration(values: ["cache.valkey.url": "valkey://127.0.0.1:6379"])
 
             let error = #expect(throws: (any Error).self) {
-                try Flight.assemble(configuration: configuration, modules: [FlightCacheModule.self])
+                try FlightCacheModule(configuration: configuration)
             }
             let message = String(describing: try #require(error))
             #expect(message.contains("cache.valkey.url"))
@@ -177,9 +183,13 @@ struct UnloadedCacheAdapterTests {
             // Same configuration; a registered store is what the check is
             // about, so the fallback branch never runs.
             let configuration = Configuration(values: ["cache.valkey.url": "valkey://127.0.0.1:6379"])
+            let adapter = ModuleTests.RecordingAdapterModule()
             let application = try Flight.assemble(
                 configuration: configuration,
-                modules: [ModuleTests.RecordingAdapterModule.self])
+                modules: [
+                    adapter,
+                    try FlightCacheModule(configuration: configuration, adapter: adapter.cache),
+                ])
             #expect(try application.container.resolve((any Cache).self) is RecordingCache)
         }
     }
@@ -188,8 +198,10 @@ struct UnloadedCacheAdapterTests {
     func neitherConfiguredNorLoaded() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
+            let configuration = Configuration()
             let application = try Flight.assemble(
-                configuration: Configuration(), modules: [FlightCacheModule.self])
+                configuration: configuration,
+                modules: [try FlightCacheModule(configuration: configuration)])
             #expect(try application.container.resolve((any Cache).self) is InMemoryCache)
         }
     }

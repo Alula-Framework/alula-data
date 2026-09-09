@@ -16,9 +16,16 @@ struct ModuleRegistrationTests {
             defer { FlightCaches.uninstall() }
             // Construction parses eagerly but dials only when the service runs
             // (nothing listens on port 5).
+            // The adapter provides the store; the base module takes it —
+            // both are built, the direction the inversion established.
+            let configuration = Configuration(values: ["cache.valkey.url": "valkey://localhost:5"])
+            let valkey = try FlightCacheValkeyModule(configuration: configuration)
             let application = try Flight.assemble(
-                configuration: Configuration(values: ["cache.valkey.url": "valkey://localhost:5"]),
-                modules: [FlightCacheValkeyModule.self])
+                configuration: configuration,
+                modules: [
+                    valkey,
+                    try FlightCacheModule(configuration: configuration, adapter: valkey.cache),
+                ])
             let store = try application.container.resolve((any Cache).self)
             #expect(store is ValkeyCache)
             #expect(FlightCaches.isInstalled)
@@ -31,10 +38,11 @@ struct ModuleRegistrationTests {
     func badURLFailsBootstrap() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
+            // Fails at construction now, which is earlier than the freeze it
+            // used to fail at.
             #expect(throws: (any Error).self) {
-                _ = try Flight.assemble(
-                    configuration: Configuration(values: ["cache.valkey.url": "http://nope"]),
-                    modules: [FlightCacheValkeyModule.self])
+                _ = try FlightCacheValkeyModule(
+                    configuration: Configuration(values: ["cache.valkey.url": "http://nope"]))
             }
         }
     }
@@ -44,7 +52,7 @@ struct ModuleRegistrationTests {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
             #expect(throws: (any Error).self) {
-                _ = try Flight.assemble(configuration: Configuration(), modules: [FlightCacheValkeyModule.self])
+                _ = try FlightCacheValkeyModule(configuration: Configuration())
             }
         }
     }
