@@ -32,60 +32,55 @@ import Valkey
 /// request served before the pool is live), replace broken connections while
 /// running, drain on graceful shutdown.
 public final class ValkeyDataModule<Name: DataSourceName>: FlightModule {
-    /// Stashed during `configure` so `service` can resolve the pool lazily —
-    /// the same pattern as `PostgresDataModule` (modules cannot resolve
-    /// during the registration phase, Flight Core).
-    private var container: Container?
+    /// The pool. A repository holds this; the composition root reads it here
+    /// and passes it as a graph root.
+    public let dataSource: ValkeyDataSource
 
-    public init() {}
+    /// This datasource's liveness probe (the pool's `ping()`), provided as a
+    /// value for the composition root to aggregate for Actuator.
+    public let liveness: DataSourceLiveness
 
-    public func configure(_ container: Container) throws {
-        self.container = container
+    /// A bad URL or pool size fails composition — earlier than the `freeze()`
+    /// factory this used to be, and much earlier than the first command.
+    public init(configuration: Configuration) throws {
         let name = Name.name
-
-        // The pool + lease + liveness triple. The factory runs at freeze(),
-        // where Configuration is readable — a bad URL or pool size fails
-        // bootstrap, never the first command (Flight Data Core).
-        container.register(dataSource: ValkeyDataSource.self, name: name) { container in
-            let configuration = try container.resolve(Configuration.self)
-            let settings = try DataSourceSettings.load(name: name, from: configuration)
-            // Defaults on, same key and same reasoning as the Postgres twin:
-            // a pooled connection is a session, and a session that remembers
-            // `SELECT 5` across scopes reads the wrong database.
-            let reset =
-                try configuration.getIfPresent(
-                    "datasource.\(name).reset_on_release", as: Bool.self) ?? true
-            return try ValkeyDataSource(settings: settings, resetOnRelease: reset)
-        }
-
-        // Only the pool is a component. A `ValkeyConnection` is leased for
-        // one operation through `pool.withConnection { }` and returned when
-        // that operation ends — see FlightDataCore's ContainerRegistration for
-        // why the `.scoped` lease it replaces propagated lifetime up the
-        // dependency graph.
-
-        // The conventional default datasource also answers unqualified
-        // resolution, so `@Inject var pool: ValkeyDataSource` works without
-        // ceremony in the one-store app.
-        if name == PrimaryDataSource.name {
-            container.register(ValkeyDataSource.self, scope: .singleton) { c in
-                try c.resolve(ValkeyDataSource.self, qualifier: name)
-            }
+        let settings = try DataSourceSettings.load(name: name, from: configuration)
+        // Defaults on, same key and same reasoning as the Postgres twin: a
+        // pooled connection is a session, and a session that remembers
+        // `SELECT 5` across scopes reads the wrong database.
+        let reset =
+            try configuration.getIfPresent(
+                "datasource.\(name).reset_on_release", as: Bool.self) ?? true
+        let dataSource = try ValkeyDataSource(settings: settings, resetOnRelease: reset)
+        self.dataSource = dataSource
+        self.liveness = DataSourceLiveness(datasourceName: name) { [dataSource] in
+            try await dataSource.ping()
         }
     }
 
+    public init() {
+        preconditionFailure(
+            "ValkeyDataModule takes its configuration in init(configuration:), so it cannot be "
+                + "instantiated from its type. Pass `composedBy: flightComposeModules` to "
+                + "Flight.run — `flight new` writes that argument — or construct the module "
+                + "yourself and use the entry point taking module instances.")
+    }
+
+    // A `ValkeyConnection` is not a component: it is leased for one operation
+    // through `pool.withConnection { }` and returned when that operation ends.
+    // The module holds only the pool (and its liveness probe).
+
     public var service: (any Service)? {
-        container.map { ValkeyPoolService<Name>(container: $0) }
+        ValkeyPoolService(dataSource: dataSource)
     }
 }
 
-/// The pool's ServiceLifecycle wrapper: resolves the datasource post-freeze
-/// and runs it (dial → maintain → drain).
-struct ValkeyPoolService<Name: DataSourceName>: Service {
-    let container: Container
+/// The pool's ServiceLifecycle wrapper: runs it (dial → maintain → drain).
+/// Handed the pool the module owns, rather than resolving it post-freeze.
+struct ValkeyPoolService: Service {
+    let dataSource: ValkeyDataSource
 
     func run() async throws {
-        let source = try container.resolve(ValkeyDataSource.self, qualifier: Name.name)
-        try await source.run()
+        try await dataSource.run()
     }
 }

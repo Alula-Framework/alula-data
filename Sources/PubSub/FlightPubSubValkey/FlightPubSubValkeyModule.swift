@@ -71,30 +71,13 @@ public struct FlightPubSubValkeyModule: FlightModule {
         self.adapter = valkey
     }
 
-    /// This module takes its configuration, so it cannot be built from its
-    /// type alone. Every supported path checks this and throws first.
-    public static var isTypeConstructible: Bool { false }
-
-    /// The backstop behind that flag, for a caller writing
-    /// `FlightPubSubValkeyModule()` directly.
+    /// The backstop for a caller writing `FlightPubSubValkeyModule()` directly.
     public init() {
         preconditionFailure(
             "FlightPubSubValkeyModule takes its configuration in init(configuration:), so it "
                 + "cannot be instantiated from its type. Pass `composedBy: flightComposeModules` "
                 + "to Flight.run — `flight new` writes that argument — or construct the module "
                 + "yourself and use the entry point taking module instances.")
-    }
-
-    /// Projects what this module already holds. Note what is gone: the
-    /// `Container` the old class stashed during `configure` so that `service`
-    /// could resolve after freeze. A module that owns its components has
-    /// nothing to look up.
-    public func configure(_ container: Container) throws {
-        let client = self.client
-        let valkey = self.valkey
-        container.register(ValkeyPubSubClient.self, scope: .singleton) { _ in client }
-        container.register(ValkeyPubSubAdapter.self, scope: .singleton) { _ in valkey }
-        container.register((any DistributedPubSubAdapter).self, scope: .singleton) { _ in valkey }
     }
 
     /// The client pool, and nothing else. The relay is `FlightPubSubModule`'s

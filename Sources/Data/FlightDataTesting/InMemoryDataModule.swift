@@ -31,19 +31,29 @@ public final class InMemoryDataModule<Name: DataSourceName>: FlightModule {
     /// Small on purpose: exhaustion bugs should be reachable in tests.
     public static var defaultPoolSize: Int { 4 }
 
-    public init() {}
+    /// The pool this module owns and provides.
+    public let dataSource: InMemoryDataSource
 
-    public func configure(_ container: Container) throws {
+    /// Its liveness probe, provided as a value like the real store modules'.
+    public let liveness: DataSourceLiveness
+
+    /// Configuration is optional for the in-memory store — it is "backed by
+    /// nothing", so there is no URL to require; `datasource.<name>.pool_size`
+    /// is honored when present and defaults to 4 connections. A bad pool size
+    /// fails composition rather than the first query.
+    public init(configuration: Configuration = Configuration()) throws {
         let name = Name.name
-        container.register(dataSource: InMemoryDataSource.self, name: name) { container in
-            let configuration = try container.resolve(Configuration.self)
-            let poolSize = try configuration.getIfPresent(
+        let poolSize =
+            try configuration.getIfPresent(
                 DataSourceConfigKey.poolSize(datasource: name), as: Int.self
             ) ?? Self.defaultPoolSize
-            guard poolSize >= 1 else {
-                throw DataSourceConfigurationError.invalidPoolSize(datasource: name, value: poolSize)
-            }
-            return InMemoryDataSource(name: name, poolSize: poolSize)
+        guard poolSize >= 1 else {
+            throw DataSourceConfigurationError.invalidPoolSize(datasource: name, value: poolSize)
+        }
+        let dataSource = InMemoryDataSource(name: name, poolSize: poolSize)
+        self.dataSource = dataSource
+        self.liveness = DataSourceLiveness(datasourceName: name) { [dataSource] in
+            try await dataSource.ping()
         }
     }
 }

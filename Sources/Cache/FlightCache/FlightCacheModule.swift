@@ -42,12 +42,13 @@ public struct FlightCacheModule: FlightModule {
     public let runtime: CacheRuntime
 
     /// The store the runtime wraps — the adapter when one was supplied, the
-    /// in-memory LRU otherwise. Private: see `runtime`.
-    private let store: any Cache
+    /// in-memory LRU otherwise. Internal so a test can confirm which store the
+    /// module chose, the way it used to resolve `(any Cache)` from the container.
+    let store: any Cache
 
-    /// The in-memory store, always built so `InMemoryCache.self` resolves and
-    /// a bad LRU bound fails composition regardless of the adapter.
-    private let inMemory: InMemoryCache
+    /// The in-memory store, always built so a bad LRU bound fails composition
+    /// regardless of the adapter.
+    let inMemory: InMemoryCache
 
     /// - Parameters:
     ///   - adapter: A distributed cache, from an adapter module. Nil means the
@@ -89,13 +90,16 @@ public struct FlightCacheModule: FlightModule {
         }
         let store: any Cache = adapter ?? inMemory
         self.store = store
-        self.runtime = try CacheRuntime(
+        let runtime = try CacheRuntime(
             store: store, configuration: configuration, codec: codec ?? JSONCacheCodec())
+        self.runtime = runtime
+        // Install the runtime into the process-wide `FlightCaches` seam that
+        // `@Cacheable` reads. This used to happen in the `freeze()`-time
+        // factory; with no container it happens when the module is built,
+        // which is still before any request — the composition root constructs
+        // every module ahead of starting services.
+        FlightCaches.install(runtime)
     }
-
-    /// This module takes its configuration, so it cannot be built from its
-    /// type — every supported path checks this and throws first.
-    public static var isTypeConstructible: Bool { false }
 
     public init() {
         preconditionFailure(
@@ -103,19 +107,6 @@ public struct FlightCacheModule: FlightModule {
                 + "cannot be instantiated from its type. Pass `composedBy: flightComposeModules` "
                 + "to Flight.run — `flight new` writes that argument — or construct the module "
                 + "yourself and use the entry point taking module instances.")
-    }
-
-    /// Projects what this module holds, and installs the runtime into the
-    /// process-wide `FlightCaches` seam that `@Cacheable` reads. Nothing is
-    /// constructed here — the runtime exists before any container does.
-    public func configure(_ container: Container) throws {
-        let store = self.store
-        let runtime = self.runtime
-        let inMemory = self.inMemory
-        container.register(InMemoryCache.self, scope: .singleton) { _ in inMemory }
-        container.register((any Cache).self, scope: .singleton) { _ in store }
-        container.register(CacheRuntime.self, scope: .singleton) { _ in runtime }
-        FlightCaches.install(runtime)
     }
 }
 

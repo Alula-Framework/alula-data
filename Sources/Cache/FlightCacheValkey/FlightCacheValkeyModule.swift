@@ -40,28 +40,12 @@ public struct FlightCacheValkeyModule: FlightModule {
         self.cache = valkey
     }
 
-    /// This module takes its configuration, so it cannot be built from its
-    /// type — every supported path checks this and throws first.
-    public static var isTypeConstructible: Bool { false }
-
     public init() {
         preconditionFailure(
             "FlightCacheValkeyModule takes its configuration in init(configuration:), so it "
                 + "cannot be instantiated from its type. Pass `composedBy: flightComposeModules` "
                 + "to Flight.run — `flight new` writes that argument — or construct the module "
                 + "yourself and use the entry point taking module instances.")
-    }
-
-    /// Projects the cache under the store qualifier the base module reads, and
-    /// as the concrete `ValkeyCache` a test might resolve. The base module
-    /// takes the adapter directly now, so the qualified registration is a
-    /// courtesy rather than the wiring path.
-    public func configure(_ container: Container) throws {
-        let valkey = self.valkey
-        container.register(ValkeyCache.self, scope: .singleton) { _ in valkey }
-        container.register(
-            (any Cache).self, qualifier: FlightCacheModule.storeQualifier, scope: .singleton
-        ) { _ in valkey }
     }
 
     public var service: (any Service)? {

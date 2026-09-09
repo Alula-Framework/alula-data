@@ -36,6 +36,13 @@ public struct PostgresDataModule<Name: DataSourceName>: FlightModule {
     /// here and passes it as a graph root.
     public let dataSource: PostgresDataSource
 
+    /// This datasource's liveness probe — "is the store answering right now",
+    /// wrapping the pool's `ping()`. Provided as a value so the composition
+    /// root can aggregate `[DataSourceLiveness]` for Actuator, the way the
+    /// container's `register(dataSource:)` used to register one alongside the
+    /// pool.
+    public let liveness: DataSourceLiveness
+
     /// A bad URL or pool size fails composition — earlier than the `freeze()`
     /// factory this used to be, and much earlier than the first query.
     public init(configuration: Configuration) throws {
@@ -47,12 +54,12 @@ public struct PostgresDataModule<Name: DataSourceName>: FlightModule {
         let reset =
             try configuration.getIfPresent(
                 "datasource.\(name).reset_on_release", as: Bool.self) ?? true
-        self.dataSource = try PostgresDataSource(settings: settings, resetOnRelease: reset)
+        let dataSource = try PostgresDataSource(settings: settings, resetOnRelease: reset)
+        self.dataSource = dataSource
+        self.liveness = DataSourceLiveness(datasourceName: name) { [dataSource] in
+            try await dataSource.ping()
+        }
     }
-
-    /// This module takes its configuration, so it cannot be built from its
-    /// type — every supported path checks this and throws first.
-    public static var isTypeConstructible: Bool { false }
 
     public init() {
         preconditionFailure(
@@ -62,33 +69,10 @@ public struct PostgresDataModule<Name: DataSourceName>: FlightModule {
                 + "yourself and use the entry point taking module instances.")
     }
 
-    public func configure(_ container: Container) throws {
-        let name = Name.name
-        let dataSource = self.dataSource
-        container.register(dataSource: PostgresDataSource.self, name: name) { _ in dataSource }
-
-        // Only the pool is a component. A `PostgresConnection` is not: it is
-        // leased for one operation through `pool.withConnection { }` and
-        // returned when that operation ends.
-        //
-        // There used to be a `.scoped` `PostgresConnection` here — a view onto
-        // a request-held lease — plus a `PostgresTransactionCoordinator` that
-        // located that connection through the ambient scope, and a `.scoped`
-        // Hangar `Repo` bound to it. All three are gone: a repository holds
-        // the pool and brackets each operation, and transactions are Hangar's
-        // `repo.transaction { }`.
-
-        // The conventional default datasource also answers unqualified
-        // resolution, so `@Inject var pool: PostgresDataSource` works without
-        // ceremony in the one-database app. The scoped `PostgresConnection`
-        // registration used to extend that courtesy; it moves to the pool,
-        // because the pool is what a repository now holds. Named datasources
-        // must still be asked for by name — with several pools, silence would
-        // be guessing (Flight Core's qualifier posture).
-        if name == PrimaryDataSource.name {
-            container.register(PostgresDataSource.self, scope: .singleton) { _ in dataSource }
-        }
-    }
+    // A `PostgresConnection` is not a component: it is leased for one
+    // operation through `pool.withConnection { }` and returned when that
+    // operation ends. The module holds only the pool (and its liveness probe);
+    // a consumer takes the pool by type from the composition graph.
 
     public var service: (any Service)? {
         PostgresPoolService(dataSource: dataSource)
