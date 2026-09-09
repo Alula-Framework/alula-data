@@ -10,10 +10,11 @@ import FlightCore
 /// complementary signal: is the store on the other end of the pool actually
 /// answering right now.
 ///
-/// Actuator (or anything else) enumerates every datasource's probe without
-/// knowing any store package exists via `DataSourceLiveness.all(in:)`.
+/// A datasource module holds one of these (built from its pool's `ping()`)
+/// and provides it; the composition root aggregates `[DataSourceLiveness]`
+/// across modules, the way it aggregates component descriptors.
 public struct DataSourceLiveness: Sendable {
-    /// The datasource this probe belongs to — its qualifier in the container.
+    /// The datasource this probe belongs to — its configured name.
     public let datasourceName: String
 
     private let probe: @Sendable () async throws -> Void
@@ -29,12 +30,4 @@ public struct DataSourceLiveness: Sendable {
         try await probe()
     }
 
-    /// Every registered datasource's probe, discovered through container
-    /// introspection (Flight Core) — no store-package knowledge required.
-    public static func all(in container: Container) throws -> [DataSourceLiveness] {
-        let typeName = String(reflecting: DataSourceLiveness.self)
-        return try container.allRegistrations()
-            .filter { $0.typeName == typeName }
-            .map { try container.resolve(DataSourceLiveness.self, qualifier: $0.qualifier) }
-    }
 }

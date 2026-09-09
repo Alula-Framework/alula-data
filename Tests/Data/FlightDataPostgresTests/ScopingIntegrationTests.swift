@@ -17,7 +17,7 @@ extension PostgresIntegrationSuite {
 @Suite("Pooled connections against Postgres")
 struct ScopingIntegrationTests {
     @Test func repositoryFindsInsertedRows() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
             let user = User(
                 id: UUID(), email: "ada@example.com", lastName: "Lovelace", age: 36,
@@ -25,7 +25,7 @@ struct ScopingIntegrationTests {
                 profile: Profile(bio: "first programmer", loginCount: 1),
                 nickname: nil)
 
-            let repo = try container.resolve(UserRepository.self)
+            let repo = app.users
             try await repo.insert(user)
             let found = try await repo.find(byEmail: "ada@example.com")
             #expect(found == user)
@@ -37,9 +37,9 @@ struct ScopingIntegrationTests {
         // example test, verbatim in behavior: unknown email → nil. It is
         // shorter now — no scope to open, because there is no lifetime to
         // manage on the way to a repository.
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
-            let repo = try container.resolve(UserRepository.self)
+            let repo = app.users
             #expect(try await repo.find(byEmail: "nobody@example.com") == nil)
         }
     }
@@ -48,9 +48,9 @@ struct ScopingIntegrationTests {
     /// new boundary: the lease is the operation, and it ends when the
     /// operation does.
     @Test func operationReturnsConnectionToPool() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
-            let repo = try container.resolve(UserRepository.self)
+            let repo = app.users
 
             #expect(source.activeCheckouts == 0, "resolving a repository takes nothing")
 
@@ -69,9 +69,9 @@ struct ScopingIntegrationTests {
     /// replacement for what request-scoped pinning used to give implicitly,
     /// now said out loud by the code that wants it.
     @Test func oneBracketIsOneLease() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
-            let pool = try container.resolve(PostgresDataSource.self)
+            let pool = app.pool
             let before = source.totalCheckouts
 
             try await pool.withRepo { repo in
@@ -86,8 +86,8 @@ struct ScopingIntegrationTests {
     }
 
     @Test func exhaustedPoolThrowsPromptly() async throws {
-        try await withPostgresContainer(poolSize: 1) { container, source in
-            let pool = try container.resolve(PostgresDataSource.self)
+        try await withPostgresContainer(poolSize: 1) { app, source in
+            let pool = app.pool
             // Hold the only connection, then ask for another from inside the
             // bracket. Prompt error, never parking (Flight Data Core D1).
             try await pool.withConnection { _ in
@@ -101,15 +101,16 @@ struct ScopingIntegrationTests {
     }
 
     @Test func livenessProbeAnswers() async throws {
-        try await withPostgresContainer { container, _ in
-            let probes = try DataSourceLiveness.all(in: container)
-            let primary = try #require(probes.first { $0.datasourceName == "primary" })
-            try await primary.ping()
+        try await withPostgresContainer { app, _ in
+            // The value form: the probe the module provides, rather than one
+            // discovered through container introspection.
+            #expect(app.liveness.datasourceName == "primary")
+            try await app.liveness.ping()
         }
     }
 
     @Test func closedPoolRefusesCheckout() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             await source.shutdown()
             #expect(throws: DataSourceError.closed(datasource: "primary")) {
                 _ = try source.checkout()

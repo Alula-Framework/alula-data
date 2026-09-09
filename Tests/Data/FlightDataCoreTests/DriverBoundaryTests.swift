@@ -79,10 +79,7 @@ struct DriverBoundaryTests {
     /// invalid path never reaching the store.
     @Test("end to end: validate, guard, apply through a leased connection")
     func endToEnd() async throws {
-        let container = try TestContainer.build {
-            InMemoryDataModule<PrimaryDataSource>()
-        }
-        let source = try container.resolve(InMemoryDataSource.self, qualifier: "primary")
+        let source = InMemoryDataSource(poolSize: 4)
 
         func update(_ user: User, email: String, on connection: InMemoryConnection) throws
             -> [ChangesetError]

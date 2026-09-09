@@ -14,7 +14,7 @@ extension PostgresIntegrationSuite {
 @Suite("Changeset writes through a leased Repo")
 struct ChangesetIntegrationTests {
     @Test func insertChangesetWritesRow() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
             let id = UUID()
             let changeset = Changeset(User.self)
@@ -27,7 +27,7 @@ struct ChangesetIntegrationTests {
                 .validate(\.email, .email)
                 .validate(\.lastName, .length(1...80))
 
-            let pool = try container.resolve(PostgresDataSource.self)
+            let pool = app.pool
             try await pool.withRepo { repo in
                 try await repo.insert(changeset)
                 let found = try await repo.all(User.where { $0.email == "grace@example.com" })
@@ -39,14 +39,14 @@ struct ChangesetIntegrationTests {
     }
 
     @Test func updateChangesetWritesOnlyDirtyColumns() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
             let original = User(
                 id: UUID(), email: "grace@example.com", lastName: "Hopper", age: 45,
                 createdAt: Date(timeIntervalSince1970: 1_600_000_000),
                 profile: nil, nickname: "amazing")
 
-            let pool = try container.resolve(PostgresDataSource.self)
+            let pool = app.pool
             try await pool.withRepo { repo in
                 try await repo.insert(original)
 
@@ -80,9 +80,9 @@ struct ChangesetIntegrationTests {
     /// The ambient binding: inside `withRepo`, `Repo.require()` answers with
     /// the repo bound to that bracket's leased connection.
     @Test func ambientRepoIsBoundInsideWithRepo() async throws {
-        try await withPostgresContainer { container, source in
+        try await withPostgresContainer { app, source in
             try await cleanTables(source)
-            let pool = try container.resolve(PostgresDataSource.self, qualifier: "primary")
+            let pool = app.pool
             try await pool.withRepo { _ in
                 let repo = try Repo.require()
                 try await repo.insert(

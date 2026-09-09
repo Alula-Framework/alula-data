@@ -4,10 +4,10 @@ import FlightDataTesting
 import FlightDataValkey
 import Testing
 
-/// Registration and bootstrap behavior that needs no server: the module's
-/// components, the fail-at-freeze posture (Flight Data Core), and.2's
-/// deliberate absences.
-@Suite("ValkeyDataModule registration")
+/// Module provision and composition-failure posture that needs no server: the
+/// values a module provides, the fail-at-construction behavior, and the
+/// deliberate absence of a transaction coordinator.
+@Suite("ValkeyDataModule provision")
 struct ModuleRegistrationTests {
     /// A syntactically valid URL for a server that is never dialed —
     /// construction parses eagerly but connects only when the service runs.
@@ -21,108 +21,63 @@ struct ModuleRegistrationTests {
         static let name = "ephemeral"
     }
 
-    private func build() throws -> Container {
-        try TestContainer.build(configuration: Self.offlineConfiguration) {
-            ValkeyTestAppModule()
-            ValkeyDataModule<Ephemeral>()
-        }
-    }
+    @Test func providesPoolAndLivenessPerDatasource() throws {
+        let primary = try ValkeyDataModule<PrimaryDataSource>(
+            configuration: Self.offlineConfiguration)
+        #expect(primary.dataSource.name == "primary")
+        #expect(primary.dataSource.poolSize == DataSourceSettings.defaultPoolSize)
+        #expect(primary.dataSource.url.database == 0)
+        #expect(primary.liveness.datasourceName == "primary")
 
-    @Test func registersPoolLeaseAndLivenessPerDatasource() throws {
-        let container = try build()
+        let ephemeral = try ValkeyDataModule<Ephemeral>(
+            configuration: Self.offlineConfiguration)
+        #expect(ephemeral.dataSource.name == "ephemeral")
+        #expect(ephemeral.dataSource.poolSize == 2)
+        #expect(ephemeral.dataSource.url.database == 2)
+        #expect(ephemeral.liveness.datasourceName == "ephemeral")
 
-        let primary = try container.resolve(ValkeyDataSource.self, qualifier: "primary")
-        #expect(primary.name == "primary")
-        #expect(primary.poolSize == DataSourceSettings.defaultPoolSize)
-        #expect(primary.url.database == 0)
-
-        let ephemeral = try container.resolve(ValkeyDataSource.self, qualifier: "ephemeral")
-        #expect(ephemeral.name == "ephemeral")
-        #expect(ephemeral.poolSize == 2)
-        #expect(ephemeral.url.database == 2)
-
-        let probes = try DataSourceLiveness.all(in: container)
-        #expect(Set(probes.map(\.datasourceName)) == ["primary", "ephemeral"])
-    }
-
-    @Test func poolAnswersQualifiedAndPrimaryUnqualified() throws {
-        let container = try build()
-
-        // Only the pool is registered — a connection is leased per operation,
-        // not resolved. The `.scoped` `ScopedConnection` and `ValkeyConnection`
-        // registrations this test used to assert are gone.
-        let pools = container.allRegistrations().filter {
-            $0.typeName.contains("ValkeyDataSource")
-        }
-        #expect(pools.allSatisfy { $0.scope == .singleton })
-        #expect(Set(pools.compactMap(\.qualifier)) == ["primary", "ephemeral"])
-        #expect(pools.contains { $0.qualifier == nil }, "the primary answers unqualified too")
-
-        #expect(
-            container.allRegistrations().allSatisfy { !$0.typeName.contains("ScopedConnection") },
-            "no lease component survives")
-    }
-
-    @Test func connectionIsNotAComponent() throws {
-        let container = try build()
-        // A connection is leased through `withConnection`, never resolved, so
-        // nothing registers one. The captive-dependency hazard the `.scoped`
-        // registration had to guard against cannot arise.
-        #expect(throws: (any Error).self) {
-            try container.resolve(ValkeyConnection.self)
-        }
-    }
-
-    @Test func repositoriesRegisterWithRepositoryStereotype() throws {
-        let container = try build()
-        let repositories = container.allRegistrations().filter { $0.stereotype == .repository }
-        #expect(repositories.contains { $0.typeName.contains("SessionRepository") })
-        #expect(repositories.allSatisfy { $0.scope == .singleton },
-                "a repository holds the pool, not a connection, so it is a singleton")
+        #expect(primary.dataSource !== ephemeral.dataSource)
     }
 
     @Test func checkoutBeforeServiceStartFailsLoudly() throws {
-        let container = try build()
-        let source = try container.resolve(ValkeyDataSource.self, qualifier: "primary")
+        let module = try ValkeyDataModule<PrimaryDataSource>(
+            configuration: Self.offlineConfiguration)
         // The portable vocabulary, not a driver-local twin of it: a
         // store-agnostic caller reacts to `DataSourceError` without knowing
-        // which driver it is talking to, and each driver shadowing this case
-        // with its own enum defeated exactly that.
+        // which driver it is talking to.
         #expect(throws: DataSourceError.notStarted(datasource: "primary")) {
-            _ = try source.checkout()
+            _ = try module.dataSource.checkout()
         }
     }
 
-    @Test func malformedURLFailsAtFreeze() {
-        // Flight Data Core posture: a bad URL is a bootstrap failure, not
-        // a first-command one.
+    @Test func malformedURLFailsAtComposition() {
+        // A bad URL is a composition failure, not a first-command one — it
+        // fails when the module is built.
         let configuration = Configuration(values: [
             DataSourceConfigKey.url(datasource: "primary"): "postgres://localhost:5432/app"
         ])
         #expect(throws: ValkeyDataSourceURLError.unsupportedScheme(datasource: "primary", scheme: "postgres")) {
-            try TestContainer.build(configuration: configuration) {
-                ValkeyDataModule<PrimaryDataSource>()
-            }
+            try ValkeyDataModule<PrimaryDataSource>(configuration: configuration)
         }
     }
 
-    @Test func missingURLFailsAtFreeze() {
+    @Test func missingURLFailsAtComposition() {
         #expect(throws: (any Error).self) {
-            try TestContainer.build(configuration: Configuration()) {
-                ValkeyDataModule<PrimaryDataSource>()
-            }
+            try ValkeyDataModule<PrimaryDataSource>(configuration: Configuration())
         }
     }
 
-    /// Made structural: the module registers no transaction
-    /// coordinator. (`@Transactional` on a Valkey-only repository has no
-    /// coordinator to find and fails at runtime resolution — the honest
-    /// alternative, `multi`, lives on the connection.)
-    @Test func noTransactionCoordinatorIsRegistered() throws {
-        let container = try build()
-        let coordinators = container.allRegistrations().filter {
-            $0.typeName.localizedCaseInsensitiveContains("TransactionCoordinator")
-        }
-        #expect(coordinators.isEmpty)
+    /// The module has no transaction coordinator to provide — there is no such
+    /// property. (`@Transactional` on a Valkey-only repository has no
+    /// coordinator to find; the honest alternative, `multi`, lives on the
+    /// connection.) Structural now, rather than an assertion on a registry.
+    @Test func noTransactionCoordinator() throws {
+        // Nothing to assert against a container; the absence is that
+        // ValkeyDataModule exposes a pool and a liveness probe, and nothing
+        // resembling a transaction coordinator. This test stands as the
+        // documented intent.
+        let module = try ValkeyDataModule<PrimaryDataSource>(
+            configuration: Self.offlineConfiguration)
+        #expect(module.liveness.datasourceName == "primary")
     }
 }

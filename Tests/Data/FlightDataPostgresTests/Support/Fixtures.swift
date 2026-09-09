@@ -181,17 +181,4 @@ struct LedgerRepository {
     }
 }
 
-// MARK: - The test application module
 
-final class TestAppModule: FlightModule {
-    static var dependencies: [any FlightModule.Type] {
-        [PostgresDataModule<PrimaryDataSource>.self]
-    }
-
-    init() {}
-
-    func configure(_ container: Container) throws {
-        try UserRepository._flightRegister(container)
-        try LedgerRepository._flightRegister(container)
-    }
-}

@@ -11,48 +11,39 @@ import FlightCacheTesting
 @Suite("FlightCacheModule — wiring", .serialized)
 struct ModuleTests {
 
-    /// The adapter-module contract in miniature: *provide* a store. It used
-    /// to register one under the well-known qualifier for FlightCacheModule
-    /// to discover; now FlightCacheModule takes it.
-    struct RecordingAdapterModule: FlightModule {
+    /// The adapter-module contract in miniature: *provide* a store. The base
+    /// module takes it as its `adapter` — matched by type in composition.
+    struct RecordingAdapterModule {
         let cache: any Cache = RecordingCache()
-        func configure(_ container: Container) throws {}
     }
 
-    @Test("without an adapter module, the in-memory store is the cache")
+    @Test("without an adapter, the in-memory store is the cache")
     func inMemoryDefault() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
-            let configuration = Configuration(values: ["cache.memory.max_entries": "5"])
-            let application = try Flight.assemble(
-                configuration: configuration,
-                modules: [try FlightCacheModule(configuration: configuration)])
-            let store = try application.container.resolve((any Cache).self)
-            let memory = try #require(store as? InMemoryCache)
+            // Building the module installs its runtime into the FlightCaches
+            // seam — the value-model home of what the freeze()-time factory did.
+            let module = try FlightCacheModule(
+                configuration: Configuration(values: ["cache.memory.max_entries": "5"]))
+            let memory = try #require(module.store as? InMemoryCache)
             #expect(memory.maxEntries == 5)
             #expect(FlightCaches.isInstalled)
         }
     }
 
-    @Test("a registered adapter store wins over the in-memory default")
+    @Test("a supplied adapter store wins over the in-memory default")
     func adapterComposesByPresence() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
-            let configuration = Configuration()
             let adapter = RecordingAdapterModule()
-            let application = try Flight.assemble(
-                configuration: configuration,
-                modules: [
-                    adapter,
-                    try FlightCacheModule(configuration: configuration, adapter: adapter.cache),
-                ])
-            let store = try application.container.resolve((any Cache).self)
-            #expect(store is RecordingCache)
+            let module = try FlightCacheModule(
+                configuration: Configuration(), adapter: adapter.cache)
+            #expect(module.store is RecordingCache)
             #expect(FlightCaches.isInstalled)
         }
     }
 
-    @Test("a non-positive LRU bound fails bootstrap, not the first request")
+    @Test("a non-positive LRU bound fails composition, not the first request")
     func invalidMaxEntriesFailsBootstrap() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
@@ -107,46 +98,29 @@ struct CacheCodecSeamTests {
         }
     }
 
-    /// Provides a codec the way an application would: its own module.
-    struct MarkerCodecModule: FlightModule {
-        let codec: any CacheCodec = MarkerCodec()
-        func configure(_ container: Container) throws {}
-    }
-
-    @Test("an application's registered codec is the one the runtime uses")
+    @Test("an application's supplied codec is the one the runtime uses")
     func registeredCodecIsUsed() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
-            let configuration = Configuration()
-            let codecModule = MarkerCodecModule()
-            let application = try Flight.assemble(
-                configuration: configuration,
-                modules: [
-                    codecModule,
-                    try FlightCacheModule(configuration: configuration, codec: codecModule.codec),
-                ])
-            let runtime = try application.container.resolve(CacheRuntime.self)
-            _ = try await runtime.cacheable(namespace: "codec", parts: ["1"], ttl: .seconds(60)) { 42 }
+            let module = try FlightCacheModule(
+                configuration: Configuration(), codec: MarkerCodec())
+            _ = try await module.runtime.cacheable(
+                namespace: "codec", parts: ["1"], ttl: .seconds(60)) { 42 }
 
-            let store = try application.container.resolve((any Cache).self)
-            let stored = await store.get(CacheKey(namespace: "codec", parts: ["1"]))
+            let stored = await module.store.get(CacheKey(namespace: "codec", parts: ["1"]))
             #expect(stored.map { String(decoding: $0, as: UTF8.self) }?.hasPrefix("marker:") == true)
         }
     }
 
-    @Test("no registered codec still means JSON")
+    @Test("no supplied codec still means JSON")
     func defaultCodecIsJSON() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
-            let configuration = Configuration()
-            let application = try Flight.assemble(
-                configuration: configuration,
-                modules: [try FlightCacheModule(configuration: configuration)])
-            let runtime = try application.container.resolve(CacheRuntime.self)
-            _ = try await runtime.cacheable(namespace: "codec", parts: ["2"], ttl: .seconds(60)) { 42 }
+            let module = try FlightCacheModule(configuration: Configuration())
+            _ = try await module.runtime.cacheable(
+                namespace: "codec", parts: ["2"], ttl: .seconds(60)) { 42 }
 
-            let store = try application.container.resolve((any Cache).self)
-            let stored = await store.get(CacheKey(namespace: "codec", parts: ["2"]))
+            let stored = await module.store.get(CacheKey(namespace: "codec", parts: ["2"]))
             #expect(stored.map { String(decoding: $0, as: UTF8.self) } == "42")
         }
     }
@@ -161,7 +135,7 @@ struct CacheCodecSeamTests {
 @Suite("FlightCacheModule — unloaded adapter", .serialized)
 struct UnloadedCacheAdapterTests {
 
-    @Test("cache.valkey.url with no adapter module refuses to boot in-memory")
+    @Test("cache.valkey.url with no adapter refuses to boot in-memory")
     func configuredButNotLoaded() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
@@ -180,17 +154,12 @@ struct UnloadedCacheAdapterTests {
     func configuredAndLoaded() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
-            // Same configuration; a registered store is what the check is
-            // about, so the fallback branch never runs.
+            // Same configuration; a supplied store is what the check is about,
+            // so the fallback branch never runs.
             let configuration = Configuration(values: ["cache.valkey.url": "valkey://127.0.0.1:6379"])
             let adapter = ModuleTests.RecordingAdapterModule()
-            let application = try Flight.assemble(
-                configuration: configuration,
-                modules: [
-                    adapter,
-                    try FlightCacheModule(configuration: configuration, adapter: adapter.cache),
-                ])
-            #expect(try application.container.resolve((any Cache).self) is RecordingCache)
+            let module = try FlightCacheModule(configuration: configuration, adapter: adapter.cache)
+            #expect(module.store is RecordingCache)
         }
     }
 
@@ -198,11 +167,8 @@ struct UnloadedCacheAdapterTests {
     func neitherConfiguredNorLoaded() async throws {
         try await GlobalCacheSeam.exclusive {
             defer { FlightCaches.uninstall() }
-            let configuration = Configuration()
-            let application = try Flight.assemble(
-                configuration: configuration,
-                modules: [try FlightCacheModule(configuration: configuration)])
-            #expect(try application.container.resolve((any Cache).self) is InMemoryCache)
+            let module = try FlightCacheModule(configuration: Configuration())
+            #expect(module.store is InMemoryCache)
         }
     }
 }

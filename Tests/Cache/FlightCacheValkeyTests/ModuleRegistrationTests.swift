@@ -1,8 +1,8 @@
-import FlightCache
 import FlightCacheTesting
 import FlightCore
 import Testing
 
+@testable import FlightCache
 @testable import FlightCacheValkey
 
 /// Serialized: assembling FlightCacheModule installs into the process-global
@@ -20,14 +20,13 @@ struct ModuleRegistrationTests {
             // both are built, the direction the inversion established.
             let configuration = Configuration(values: ["cache.valkey.url": "valkey://localhost:5"])
             let valkey = try FlightCacheValkeyModule(configuration: configuration)
+            let cacheModule = try FlightCacheModule(configuration: configuration, adapter: valkey.cache)
             let application = try Flight.assemble(
                 configuration: configuration,
-                modules: [
-                    valkey,
-                    try FlightCacheModule(configuration: configuration, adapter: valkey.cache),
-                ])
-            let store = try application.container.resolve((any Cache).self)
-            #expect(store is ValkeyCache)
+                modules: [valkey, cacheModule])
+            // The base module took the adapter as its store, over the in-memory
+            // default — the direction the inversion established.
+            #expect(cacheModule.store is ValkeyCache)
             #expect(FlightCaches.isInstalled)
             // The adapter contributed its client service to the group.
             #expect(application.services.contains { $0.moduleName == "FlightCacheValkeyModule" })

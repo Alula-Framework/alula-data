@@ -48,13 +48,12 @@ extension ValkeyIntegrationSuite {
 
         @Test(arguments: TestServer.available)
         func pingAnswers(_ server: TestServer) async throws {
-            try await withValkeyContainer(server) { container, source in
+            try await withValkeyContainer(server) { app, source in
                 try await source.ping()
                 // The same probe Actuator reads, through the store-agnostic
                 // component.
-                let probes = try DataSourceLiveness.all(in: container)
-                #expect(probes.count == 1)
-                try await probes[0].ping()
+                #expect(app.liveness.datasourceName == "primary")
+                try await app.liveness.ping()
             }
         }
 
@@ -159,8 +158,8 @@ extension ValkeyIntegrationSuite {
     struct LeasingTests {
         @Test(arguments: TestServer.available)
         func operationReturnsConnectionToPool(_ server: TestServer) async throws {
-            try await withValkeyContainer(server) { container, source in
-                let repo = try container.resolve(SessionRepository.self)
+            try await withValkeyContainer(server) { app, source in
+                let repo = app.sessions
                 #expect(source.activeCheckouts == 0, "resolving a repository takes nothing")
 
                 _ = try await repo.find("missing")
@@ -176,8 +175,8 @@ extension ValkeyIntegrationSuite {
 
         @Test(arguments: TestServer.available)
         func oneBracketIsOneLease(_ server: TestServer) async throws {
-            try await withValkeyContainer(server) { container, source in
-                let pool = try container.resolve(ValkeyDataSource.self)
+            try await withValkeyContainer(server) { app, source in
+                let pool = app.pool
                 let before = source.totalCheckouts
 
                 try await pool.withConnection { valkey in
@@ -194,8 +193,8 @@ extension ValkeyIntegrationSuite {
         @Test(arguments: TestServer.available)
         func repositoryStoresAndFindsSessions(_ server: TestServer) async throws {
             // The design doc's repository, end to end.
-            try await withValkeyContainer(server) { container, source in
-                let repo = try container.resolve(SessionRepository.self)
+            try await withValkeyContainer(server) { app, source in
+                let repo = app.sessions
                 let session = Session(id: "s1", userID: 7, ipAddress: nil, loginCount: 3)
                 try await repo.store(session, ttl: .seconds(3600))
 
@@ -207,8 +206,8 @@ extension ValkeyIntegrationSuite {
 
         @Test(arguments: TestServer.available)
         func leaderboardReadsBestFirst(_ server: TestServer) async throws {
-            try await withValkeyContainer(server) { container, source in
-                let repo = try container.resolve(SessionRepository.self)
+            try await withValkeyContainer(server) { app, source in
+                let repo = app.sessions
                 try await repo.recordScore("ada", 420)
                 try await repo.recordScore("grace", 990)
                 try await repo.recordScore("edsger", 700)
