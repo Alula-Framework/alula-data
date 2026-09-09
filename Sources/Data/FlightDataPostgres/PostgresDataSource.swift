@@ -137,7 +137,8 @@ public final class PostgresDataSource: DataSource, Sendable {
     ///     poolSize: 10)
     /// ```
     ///
-    /// Register it with `container.register(dataSource: source, name: "primary")`.
+    /// A datasource module (`PostgresDataModule`) builds one of these and
+    /// provides it as a value the composition root wires by type.
     public convenience init(
         name: String,
         configuration: PostgresConnection.Configuration,
@@ -625,7 +626,7 @@ public final class PostgresDataSource: DataSource, Sendable {
     }
 
     /// `SELECT 1`, surfaced by Actuator through the `DataSourceLiveness`
-    /// component that `register(dataSource:)` registers alongside the pool.
+    /// value a datasource module provides alongside its pool.
     public func ping() async throws {
         do {
             // The non-waiting checkout on purpose: `withConnection` now queues

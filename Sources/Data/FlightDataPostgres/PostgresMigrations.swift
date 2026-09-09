@@ -38,7 +38,7 @@ public enum PostgresMigrations {
     ///
     /// ```swift
     /// try await PostgresMigrations.migrate(
-    ///     configuration: try container.resolve(Configuration.self),
+    ///     configuration: try Configuration.load(),
     ///     migrations: _allMigrations()   // the FlightMigratePlugin registry
     /// )
     /// ```

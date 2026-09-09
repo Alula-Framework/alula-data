@@ -9,12 +9,13 @@ nothing. On several it needs something the servers can contend through, and
 this is that something:
 
 ```swift
-container.register((any JobCoordinator).self, scope: .singleton) { c in
-    PostgresJobCoordinator(dataSource: try c.resolve(PostgresDataSource.self))
-}
+// A module provides the coordinator as a value; the composition root hands
+// it to FlightSchedulerModule, matched by type:
+let jobCoordinator: any JobCoordinator =
+    PostgresJobCoordinator(dataSource: graph.postgresDataSource)
 ```
 
-Register it and the scheduler's startup line changes from `single-process`
+Provide it and the scheduler's startup line changes from `single-process`
 to `postgres lease` — and the warning about run-once jobs with no coordinator
 stops, because there now is one.
 

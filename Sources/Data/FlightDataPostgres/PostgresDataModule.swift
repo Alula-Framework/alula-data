@@ -8,27 +8,26 @@ import ServiceLifecycle
 /// datasource, exactly as `InMemoryDataModule<Name>` models it —
 ///
 /// ```swift
-/// try await Flight.bootstrap(configuration: .load(), modules: [
+/// await Flight.run(configuration: try .load(), modules: [
 ///     PostgresDataModule<PrimaryDataSource>.self,
 ///     PostgresDataModule<Analytics>.self,
-/// ])
+/// ], composedBy: flightComposeModules)
 /// ```
 ///
-/// `configure(_:)` registers the pool — `PostgresDataSource`, `.singleton`,
-/// qualified by `Name.name` — and its `DataSourceLiveness` probe (via
-/// `register(dataSource:)`, Flight Data Core). For the `primary` datasource
-/// the pool also answers unqualified resolution, so the single-database app
-/// never writes a qualifier.
+/// The module owns the pool — `PostgresDataSource`, built in `init` from
+/// configuration — and provides it, along with its `DataSourceLiveness`
+/// probe, as values. The composition root reads them and wires the pool to
+/// whatever injects `PostgresDataSource`; a bad URL or pool size fails there,
+/// much earlier than the first query.
 ///
-/// That is the whole registration. A `PostgresConnection` is not a
-/// component: a repository holds the pool and leases a connection per
-/// operation through `pool.withConnection { }` or `pool.withRepo { }`.
-/// Transactions are Hangar's `repo.transaction { }`, so there is no
-/// coordinator either.
+/// A `PostgresConnection` is not a component: a repository holds the pool and
+/// leases a connection per operation through `pool.withConnection { }` or
+/// `pool.withRepo { }`. Transactions are Hangar's `repo.transaction { }`, so
+/// there is no coordinator either.
 ///
-/// `service` is the pool's `run()`: dial at start (Flight Core step 9 —
-/// no request served before the pool is live), replace broken connections
-/// while running, drain on graceful shutdown.
+/// `service` is the pool's `run()`: dial at start (no request served before
+/// the pool is live), replace broken connections while running, drain on
+/// graceful shutdown.
 public struct PostgresDataModule<Name: DataSourceName>: FlightModule {
 
     /// The pool. A repository holds this, and so does the component graph —

@@ -7,17 +7,15 @@ does.
 
 ``InMemoryDataSource`` conforms to `DataSource`, so anything written against
 the seam — a repository, a service, a module's wiring — can be tested with
-no container, no port, and no cleanup:
+no database, no port, and no cleanup:
 
 ```swift
-let container = try TestContainer.build {
-    InMemoryDataModule()
-    AppModule()
-}
+let module = try InMemoryDataModule<PrimaryDataSource>()
+let repository = UserRepository(pool: module.dataSource)
 ```
 
-``InMemoryDataModule`` registers it, and ``InMemoryConnection`` is what a
-checkout produces. What it does *not* do is execute SQL — it is a pool and a
+``InMemoryDataModule`` owns the pool (its `dataSource`), and ``InMemoryConnection``
+is what a checkout produces. What it does *not* do is execute SQL — it is a pool and a
 connection lifecycle, not a database. Testing a query means testing against
 Postgres, which is what `scripts/test.sh` is for.
 
@@ -69,6 +67,3 @@ remembered the contract to be.
 
 - ``DataSourceConformance``
 
-### Wiring
-
-- ``TestContainer``

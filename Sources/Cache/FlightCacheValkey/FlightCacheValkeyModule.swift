@@ -5,18 +5,16 @@ import ServiceLifecycle
 /// The adapter module:
 ///
 /// ```swift
-/// try await Flight.bootstrap(configuration: .load(), modules: [
+/// await Flight.run(configuration: try .load(), modules: [
 ///     FlightCacheModule.self,          // pulled in via dependencies anyway
 ///     FlightCacheValkeyModule.self,
-/// ])
+/// ], composedBy: flightComposeModules)
 /// ```
 ///
-/// `configure(_:)` registers `ValkeyCache` (settings read at the factory,
-/// which runs at `freeze()` — a bad URL fails bootstrap, never the first
-/// request) and exposes it as `(any Cache)` under
-/// `FlightCacheModule.storeQualifier`, which is all it takes for
-/// `FlightCacheModule` to choose it over the in-memory default ('s
-/// compose-by-presence).
+/// Built in `init` (settings read there — a bad URL fails composition, never
+/// the first request), the module provides its `ValkeyCache` as `cache: any
+/// Cache`. `FlightCacheModule` takes it as its `adapter`, matched by type in
+/// composition, which is all it takes to choose it over the in-memory default.
 ///
 /// `service` runs the driver's own client pool — `ValkeyClient` is already
 /// a ServiceLifecycle `Service` whose `run()` handles graceful shutdown.
@@ -25,10 +23,9 @@ public struct FlightCacheValkeyModule: FlightModule {
 
     /// The distributed cache this module provides. `FlightCacheModule` takes
     /// it as its `adapter` — matched by type in composition — and wraps its
-    /// runtime around it. It used to be *registered* under
-    /// `FlightCacheModule.storeQualifier` for the base module to discover;
-    /// providing it is the reverse direction, the one the PubSub inversion
-    /// established (D12).
+    /// runtime around it. It used to be *registered* under a well-known
+    /// qualifier for the base module to discover; providing it is the reverse
+    /// direction, the one the PubSub inversion established (D12).
     public let cache: any Cache
 
     /// The same value concretely, for the client-pool service.

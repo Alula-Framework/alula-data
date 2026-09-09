@@ -39,7 +39,7 @@ public final class InMemoryConnection: Sendable {
 /// packages provide their own integration-test support against real servers.
 ///
 /// Connections are created lazily up to `poolSize`, so the source works with
-/// no service running — a `TestContainer` needs no `ServiceGroup`. Released
+/// no service running — a test needs no `ServiceGroup`. Released
 /// connections are reused, newest first.
 public final class InMemoryDataSource: DataSource, Sendable {
     public typealias Connection = InMemoryConnection

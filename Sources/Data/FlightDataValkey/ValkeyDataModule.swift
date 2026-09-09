@@ -8,17 +8,16 @@ import Valkey
 /// datasource, exactly as `PostgresDataModule<Name>` models it —
 ///
 /// ```swift
-/// try await Flight.bootstrap(configuration: .load(), modules: [
+/// await Flight.run(configuration: try .load(), modules: [
 ///     ValkeyDataModule<PrimaryDataSource>.self,
 ///     PostgresDataModule<PrimaryDataSource>.self,   // coexists under names
-/// ])
+/// ], composedBy: flightComposeModules)
 /// ```
 ///
-/// `configure(_:)` registers the pool — `ValkeyDataSource`, `.singleton`,
-/// qualified by `Name.name` — and its `DataSourceLiveness` probe (via
-/// `register(dataSource:)`, Flight Data Core). For the `primary` datasource
-/// the pool also answers unqualified resolution, so the single-store app
-/// never writes a qualifier.
+/// The module owns the pool — `ValkeyDataSource`, built in `init` from
+/// configuration — and provides it, along with its `DataSourceLiveness`
+/// probe, as values the composition root wires by type. A bad URL or pool
+/// size fails composition, not the first command.
 ///
 /// A `ValkeyConnection` is not a component: a repository holds the pool and
 /// leases one per operation through `pool.withConnection { }`.

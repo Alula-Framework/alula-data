@@ -42,8 +42,8 @@ Dependencies are Flight Core, swift-changeset, and swift-service-lifecycle.
 
 | Product | Contents |
 |---|---|
-| `FlightDataCore` | `DataSource` (the entire cross-store contract: `checkout`/`release`, `checkout(waitingUpTo:)`, derived `withConnection`, `ping`), `ConnectionWaiters` (the parked-caller machinery every queueing pool shares), `Container.register(dataSource:)`, `DataSourceName`/`PrimaryDataSource`, `DataSourceSettings` + `DataSourceConfigKey` (key conventions), `DataSourceLiveness` (the Actuator surface), `DataSourceError` — plus the changeset layer: `Changeset<Model>`, `ValidationRule`/`CrossFieldRule`, `ValidatedChanges`/`ChangesetError`, and the `TableModel`/`TableColumn` metadata seam |
-| `FlightDataTesting` | `InMemoryDataSource` (a `DataSource` backed by nothing — real pool semantics, no store), `InMemoryDataModule<Name>` (the reference store module), `TestContainer`, and `InMemoryConnection.apply(_:to:)` (the changeset design's driver translation, in miniature) |
+| `FlightDataCore` | `DataSource` (the entire cross-store contract: `checkout`/`release`, `checkout(waitingUpTo:)`, derived `withConnection`, `ping`), `ConnectionWaiters` (the parked-caller machinery every queueing pool shares), `DataSourceName`/`PrimaryDataSource`, `DataSourceSettings` + `DataSourceConfigKey` (key conventions), `DataSourceLiveness` (the Actuator surface), `DataSourceError` — plus the changeset layer: `Changeset<Model>`, `ValidationRule`/`CrossFieldRule`, `ValidatedChanges`/`ChangesetError`, and the `TableModel`/`TableColumn` metadata seam |
+| `FlightDataTesting` | `InMemoryDataSource` (a `DataSource` backed by nothing — real pool semantics, no store), `InMemoryDataModule<Name>` (the reference store module) and `InMemoryConnection.apply(_:to:)` (the changeset design's driver translation, in miniature) |
 
 ## Using it
 
@@ -51,16 +51,18 @@ A store package's `FlightModule` follows one shape — `InMemoryDataModule`
 is the reference implementation:
 
 ```swift
-public final class PostgresDataModule<Name: DataSourceName>: FlightModule {
-    public init() {}
+public struct PostgresDataModule<Name: DataSourceName>: FlightModule {
+    public let dataSource: PostgresDataSource
+    public let liveness: DataSourceLiveness
 
-    public func configure(_ container: Container) throws {
-        // The factory runs at freeze(), where Configuration is readable —
-        // a bad config fails bootstrap, never the first query.
-        container.register(dataSource: PostgresDataSource.self, name: Name.name) { c in
-            let settings = try DataSourceSettings.load(name: Name.name,
-                                                       from: c.resolve(Configuration.self))
-            return try PostgresDataSource(settings: settings)
+    // Built in init, from configuration — a bad config fails composition,
+    // never the first query.
+    public init(configuration: Configuration) throws {
+        let settings = try DataSourceSettings.load(name: Name.name, from: configuration)
+        let dataSource = try PostgresDataSource(settings: settings)
+        self.dataSource = dataSource
+        self.liveness = DataSourceLiveness(datasourceName: Name.name) { [dataSource] in
+            try await dataSource.ping()
         }
     }
 
@@ -68,10 +70,10 @@ public final class PostgresDataModule<Name: DataSourceName>: FlightModule {
 }
 ```
 
-`register(dataSource:name:)` registers two components, both qualified by the
-datasource's name: the pool (`.singleton`) and the liveness probe
-(`DataSourceLiveness`, `.singleton`, for Actuator). A connection is
-deliberately not a component — it is leased for one operation.
+The module *owns* the pool and provides it, along with a `DataSourceLiveness`
+probe (the Actuator surface), as values. The composition root wires the pool
+to whatever injects `PostgresDataSource`; a connection is deliberately not a
+component — it is leased for one operation.
 
 Named datasources are module *type* instantiations, exactly like
 `FlightWebModule<Transport>`:
@@ -89,19 +91,22 @@ datasource:
 ```swift
 enum Analytics: DataSourceName { static let name = "analytics" }
 
-try await Flight.bootstrap(configuration: .load(), modules: [
+await Flight.run(configuration: try .load(), modules: [
     FlightWebModule<FlightTransport>.self,
     PostgresDataModule<PrimaryDataSource>.self,
     PostgresDataModule<Analytics>.self,
     AppModule.self,
-])
+], composedBy: flightComposeModules)
 ```
 
-A repository holds the **pool** and brackets each operation:
+A repository holds the **pool** and brackets each operation — it injects the
+pool, and the composition root builds it from the datasource module:
 
 ```swift
-container.register(UserRepository.self, scope: .singleton, stereotype: .repository) { c in
-    UserRepository(pool: try c.resolve(PostgresDataSource.self, qualifier: "primary"))
+@Repository
+struct UserRepository {
+    @Inject var pool: PostgresDataSource
+    // each method brackets a query with `pool.withConnection { }`
 }
 ```
 
@@ -114,17 +119,13 @@ Flight Web opening a `Scope` per request, but it also propagated a pooling
 concern up the object graph, and it pinned one connection per open WebSocket
 for the socket's whole life.
 
-Testing needs no live database and no `ServiceGroup`:
+Testing needs no live database and no `ServiceGroup` — build the module and
+hand its pool to the repository directly:
 
 ```swift
-let container = try TestContainer.build { InMemoryDataModule<PrimaryDataSource>() }
-
-try await container.withScope { scope in
-    let repo = try container.resolve(UserRepository.self, in: scope)
-    let a = repo.connection
-    let b = try container.resolve(UserRepository.self, in: scope).connection
-    #expect(a === b)   // same connection within one scope
-}
+let module = try InMemoryDataModule<PrimaryDataSource>()
+let repo = UserRepository(pool: module.dataSource)
+// exercise `repo`; each operation leases and returns a connection
 ```
 
 ## What a pool size actually means
@@ -250,10 +251,10 @@ state; nil-ness is exclusively `validateRequired`'s job.
 | D1 | `DataSource` gains `checkout()`/`release(_:)`; `withConnection` becomes a derived default on top | Scope-bound checkout used to run inside Core's *synchronous* component factories, and an async-only `withConnection` cannot be bridged from one without blocking a cooperative-pool thread (deadlock on a single-threaded executor). The synchronous factory is gone (see D2), so the primitive no longer has that caller — but the split it created is still the right shape: a primitive that cannot wait, and a queueing form built on it. |
 | D2 | ~~The `.scoped` component is `ScopedConnection<D>` (a lease class), not the raw `Connection`~~ | **Reversed.** Return-to-pool used to ride ARC, because Core's `Scope` has no close hooks: the lease's `deinit` released the connection when the scope's storage dropped it. That made every repository holding a connection request-scoped, and every service holding such a repository request-scoped in turn — a pooling concern propagating lifetime up the object graph — and it pinned one connection per open WebSocket for the socket's whole life. A connection is not a component any more; `withConnection` brackets the lease, and the bracket is the close hook. |
 | D3 | ~~Flight Core delta 11 (`Scope.active` task-local, `resolveInActiveScope`)~~ | **No longer needed here.** It existed so a scoped repository's factory could reach the scope's connection, factories receiving only the `Container`. Repositories hold the pool now, which a plain `resolve` supplies. The Core API remains for anyone who wants it; nothing in this package uses it. |
-| D4 | `register(dataSource:)` has instance *and* factory forms, plus `name:` | Modules cannot read `Configuration` during `configure` (resolution begins at `freeze()`, Core), so the "construct the DataSource from config" step happens inside a registered factory. The instance form remains for tests and hand-wiring. |
-| D5 | `DataSourceLiveness` component per datasource | The requirement was that stores "register a liveness check surfaced by Actuator", with no mechanism named. A qualified component wrapping `ping()`, discoverable via `DataSourceLiveness.all(in:)` through Core introspection, is that mechanism — Actuator needs zero store knowledge. |
-| D6 | `TestContainer` duplicated from `FlightWebTesting` | A data test must not need the web package. Identical API; qualify by module if a target imports both. Follow-up: hoist into a shared flight-testing package. |
-| D7 | `InMemoryDataModule` requires no `url` key | The in-memory store is "backed by nothing"; requiring a URL it would ignore breaks the `TestContainer.build { InMemoryDataModule() }` one-liner. `pool_size` is honored when present (default 4). Real store modules load `DataSourceSettings`, whose `url` is required. |
+| D4 | ~~`register(dataSource:)` has instance *and* factory forms, plus `name:`~~ | **Superseded by the container deletion.** There is no container to register into. The module reads `Configuration` in its `init`, builds the pool there (a bad config fails composition, not the first query), and *provides* it — and a `DataSourceLiveness` probe — as stored values the composition root wires by type. |
+| D5 | `DataSourceLiveness` value per datasource | The requirement was that stores "provide a liveness check surfaced by Actuator", with no mechanism named. A `DataSourceLiveness` value wrapping `ping()`, provided by the module, is that mechanism; the composition root aggregates `[DataSourceLiveness]` across modules for Actuator, so Actuator needs zero store knowledge. |
+| D6 | ~~`TestContainer` duplicated from `FlightWebTesting`~~ | **Gone.** The container deletion removed both `TestContainer`s. A data test builds the module and reads its `dataSource` directly — no container to duplicate. |
+| D7 | `InMemoryDataModule` requires no `url` key | The in-memory store is "backed by nothing"; requiring a URL it would ignore breaks the `try InMemoryDataModule()` one-liner. `pool_size` is honored when present (default 4). Real store modules load `DataSourceSettings`, whose `url` is required. |
 | D8 | `checkout(waitingUpTo:)` joins the contract; `withConnection` is defined on it, and `ConnectionWaiters` is shared | D1's synchronous checkout describes a *primitive*, and it got read as a policy: `pool_size` became a hard concurrency ceiling and a burst past it failed rather than queueing for a few milliseconds. A caller that can await should queue, so the async checkout is a protocol requirement with a polling default — every store queues — that a pool with a native wake path overrides. The parked-caller state machine lives in core rather than in each driver: the two pools here had already drifted apart on four separate fixes (outage backoff, ping under saturation, session reset, queueing itself), and a second copy of this would have been the fifth. |
 
 Changeset decisions:

@@ -1,39 +1,28 @@
 import FlightCore
 
-/// Module wiring, following PubSub's compose-by-presence
-/// pattern:
+/// Module wiring, composed by argument:
 ///
 /// ```swift
-/// try await Flight.bootstrap(configuration: .load(), modules: [
+/// await Flight.run(configuration: try .load(), modules: [
 ///     FlightCacheModule.self,
 ///     FlightCacheValkeyModule.self,   // optional adapter; omit for in-memory
-/// ])
+/// ], composedBy: flightComposeModules)
 /// ```
 ///
-/// `configure(_:)` registers:
+/// Built in `init`, from configuration and an optional `adapter`:
 ///
-/// 1. `InMemoryCache` — the default store, `.singleton`, its LRU
-///    bound read from `cache.memory.max_entries` at `freeze()` so a bad
-///    value fails bootstrap;
-/// 2. the unqualified `(any Cache)` — resolves an adapter registered under
-///    `storeQualifier` if one is present (catching only
-///    `ResolutionError.notRegistered`), else the in-memory store. Absent
-///    adapter module = single-instance deployment, the common case;
-/// 3. `CacheRuntime` — store + TTL policy + codec + single-flight +
-///    metrics. Its factory **installs the runtime into the `FlightCaches`
-///    seam** — the factory runs at `freeze()`, so annotated methods
-///    are served from the first request.
+/// 1. `InMemoryCache` — the default store, its LRU bound read from
+///    `cache.memory.max_entries` so a bad value fails composition;
+/// 2. the store the runtime wraps — the `adapter` an adapter module provides,
+///    matched by type in composition, or the in-memory store when none was
+///    supplied. Absent adapter = single-instance deployment, the common case;
+/// 3. `CacheRuntime` — store + TTL policy + codec + single-flight + metrics.
+///    `init` **installs it into the `FlightCaches` seam** that `@Cacheable`
+///    reads, before any request, and provides it as the module's one value.
 ///
 /// No `service`: the in-memory store has no long-running work. Adapter
 /// modules with a connection (the Valkey client) expose their own.
 public struct FlightCacheModule: FlightModule {
-    /// Adapter modules expose their store; this module takes it. It used to
-    /// be registered under this qualifier for the base module to *discover* by
-    /// catching `.notRegistered` — the compose-by-presence anti-pattern PubSub
-    /// and Presence shed. Kept only because a stored `(any Cache)` is a
-    /// separate registration a hand-wired test might still reach for.
-    public static let storeQualifier = "flight.cache.store"
-
     /// The process-wide runtime `@Cacheable` methods are served from — store,
     /// TTL policy, codec, single-flight, metrics. The one public value this
     /// module provides; typed distinctly from `(any Cache)` on purpose, so it

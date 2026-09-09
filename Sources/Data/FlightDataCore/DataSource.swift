@@ -110,8 +110,8 @@ public protocol DataSource: Sendable {
     ) async throws -> T
 
     /// Cheap liveness probe — a `SELECT 1`-equivalent. Surfaced by
-    /// Flight Actuator through the `DataSourceLiveness` component that
-    /// `register(dataSource:)` registers alongside the pool.
+    /// Flight Actuator through the `DataSourceLiveness` value a datasource
+    /// module provides alongside its pool.
     func ping() async throws
 }
 
