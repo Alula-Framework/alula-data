@@ -5,6 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # flight calls this so a change there is tested against its largest
+  # consumer on the pull request that causes it. flight 0.19.0 added an
+  # associated value to `ConfigError.missingKey`; a default argument does not
+  # apply to pattern matching, so this package's test target stopped
+  # compiling — and nothing noticed, because nothing built it.
+  workflow_call:
+    inputs:
+      flight_ref:
+        description: "The flight commit to build this package against."
+        type: string
+        default: ""
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -56,6 +68,43 @@ jobs:
           git config --global --add safe.directory '*'
 
       - uses: actions/checkout@v4
+
+      # Only when called with a ref. A standalone run resolves flight by URL,
+      # exactly as a consumer does; a called run must test the commit under
+      # review instead, which is the difference between this wiring and one
+      # that proves nothing.
+      - name: Check out the flight commit under review
+        if: inputs.flight_ref != ''
+        uses: actions/checkout@v4
+        with:
+          repository: Flight-Framework/flight
+          ref: ${{ inputs.flight_ref }}
+          path: .flight-under-review
+          token: ${{ secrets.SWIFTFLIGHT_CI_TOKEN }}
+
+      - name: Point the manifest at it
+        if: inputs.flight_ref != ''
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          manifest = pathlib.Path("Package.swift")
+          text = manifest.read_text()
+          def to_path(match):
+              tail = match.group(1)
+              traits = re.search(r'(traits:\s*\[[^\]]*\])', tail)
+              args = 'path: ".flight-under-review"'
+              if traits:
+                  args += f", {traits.group(1)}"
+              return f".package({args})"
+          text = re.sub(
+              r'\.package\(\s*url:\s*"https://github\.com/Flight-Framework/flight\.git"\s*,([^)]*)\)',
+              to_path, text)
+          manifest.write_text(text)
+          PY
+          grep -n 'flight-under-review' Package.swift || {
+            echo "::error::manifest rewrite did not take — the flight dependency was not repointed"
+            exit 1
+          }
 
       - name: Build (Flight's own warnings are errors)
         env:
