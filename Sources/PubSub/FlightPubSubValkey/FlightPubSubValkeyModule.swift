@@ -133,17 +133,21 @@ struct ValkeyPubSubService: Service {
         // Hold the pool open until the group shuts down or this task is
         // cancelled. `cancelWhenGracefulShutdown` turns the shutdown signal
         // into cancellation, which is what unblocks the sleep below.
-        await withTaskCancellationHandler {
-            await withGracefulShutdownHandler {
-                // Sleeps until cancelled; the pool runs in its own task.
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(3600))
-                }
-            } onGracefulShutdown: {
-                // Nothing to do here: the enclosing group cancels this task,
-                // which ends the loop above.
+        //
+        // It must be that function and not `withGracefulShutdownHandler`,
+        // which only *registers* a callback. This used to call the latter with
+        // an empty handler, on the premise that "the enclosing group cancels
+        // this task" — but the group is what awaits this task's exit, so
+        // nothing cancelled it, `Task.isCancelled` never became true, and
+        // graceful shutdown blocked here forever. Every SIGTERM deploy path
+        // runs through this. Both data-source pools already call the right
+        // one (PostgresDataSource.swift, ValkeyDataSource.swift).
+        await cancelWhenGracefulShutdown {
+            // Sleeps until cancelled; the pool runs in its own task.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3600))
             }
-        } onCancel: {}
+        }
 
         await adapter.drainSubscriptions()
     }
