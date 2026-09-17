@@ -45,7 +45,7 @@ struct DataSourceSettingsTests {
         #expect {
             _ = try DataSourceSettings.load(from: configuration)
         } throws: { error in
-            guard case ConfigError.missingKey(let key, _) = error else { return false }
+            guard case ConfigError.missingKey(let key, _, _) = error else { return false }
             return key == "datasource.primary.url"
         }
     }
