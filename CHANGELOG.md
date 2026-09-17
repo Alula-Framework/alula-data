@@ -6,9 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Requires flight 0.16.0. `Package.swift` still says `from: "0.14.0"` and must
-be bumped when flight 0.16.0 is tagged — this release cannot resolve against
-an earlier flight.
+Requires flight 0.18.0, and `Package.swift` now says so — this release cannot
+resolve against an earlier flight.
 
 ### Changed
 
