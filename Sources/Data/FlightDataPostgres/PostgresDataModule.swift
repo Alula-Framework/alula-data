@@ -10,9 +10,11 @@ import ServiceLifecycle
 /// ```swift
 /// await Flight.run(configuration: try .load(), modules: [
 ///     PostgresDataModule<PrimaryDataSource>.self,
-///     PostgresDataModule<Analytics>.self,
 /// ], composedBy: flightComposeModules)
 /// ```
+///
+/// One instantiation per application: a second one provides the same type and
+/// fails composition. See `DataSourceName` for why.
 ///
 /// The module owns the pool — `PostgresDataSource`, built in `init` from
 /// configuration — and provides it, along with its `DataSourceLiveness`

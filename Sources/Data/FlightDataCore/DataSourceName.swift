@@ -11,18 +11,23 @@
 /// ```swift
 /// enum Analytics: DataSourceName { static let name = "analytics" }
 ///
-/// try await Flight.bootstrap(
-///     configuration: .load(),
-///     modules: [
-///         PostgresDataModule<PrimaryDataSource>.self,
-///         PostgresDataModule<Analytics>.self,
-///     ]
+/// await Flight.run(
+///     configuration: try Configuration.load(),
+///     modules: [PostgresDataModule<Analytics>.self],
+///     composedBy: flightComposeModules
 /// )
 /// ```
 ///
-/// Each generic instantiation is a distinct module type, so the module DAG,
-/// health tracking, and `ComponentDescriptor.sourceModule` all distinguish the
-/// two datasources with no extra machinery.
+/// Each generic instantiation is a distinct module type, so the module DAG and
+/// health tracking distinguish them with no extra machinery.
+///
+/// **One datasource module of a given store per application, for now.** Two
+/// instantiations — `<PrimaryDataSource>` and `<Analytics>` — both provide the
+/// same type, `PostgresDataSource`, and composition keys registrations by type
+/// alone, so listing both fails the build with "two modules provide
+/// PostgresDataSource". The generic parameter names the *configuration key*,
+/// not the provided type. Modules of different stores (`ValkeyDataModule` beside
+/// `PostgresDataModule`) coexist fine, because their provided types differ.
 public protocol DataSourceName {
     /// The name as it appears in configuration (`datasource.<name>.…`) and
     /// as the registration qualifier for the datasource's components.

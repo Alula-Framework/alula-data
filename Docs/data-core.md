@@ -93,11 +93,24 @@ enum Analytics: DataSourceName { static let name = "analytics" }
 
 await Flight.run(configuration: try .load(), modules: [
     FlightWebModule<FlightTransport>.self,
-    PostgresDataModule<PrimaryDataSource>.self,
     PostgresDataModule<Analytics>.self,
     AppModule.self,
 ], composedBy: flightComposeModules)
 ```
+
+> **One datasource module per application, for now.** This example used to
+> list `PostgresDataModule<PrimaryDataSource>` *and* `<Analytics>` together.
+> That does not compose: both instantiations provide the same type,
+> `PostgresDataSource`, and the composition root keys registrations by type
+> alone, so it reports "two modules provide PostgresDataSource" and fails the
+> build. The generic parameter names the *configuration key*, not the provided
+> type.
+>
+> `@Inject("analytics")` appeared to resolve this and never did — the
+> qualifier was dropped before wiring, so both properties received the same
+> pool. flight 0.20.0 removed it, which turns a silent misbinding into a build
+> error. Naming on the providing side is the intended fix and is not designed
+> yet; until it lands, a second pool needs a distinct type.
 
 A repository holds the **pool** and brackets each operation — it injects the
 pool, and the composition root builds it from the datasource module:

@@ -9,10 +9,10 @@ single-node features into clustered ones.
 *between* processes, and registering it is the entire change:
 
 ```swift
-try await Flight.bootstrap(configuration: try Configuration.load(), modules: [
+await Flight.run(configuration: try Configuration.load(), modules: [
     FlightPubSubValkeyModule.self,   // pulls in FlightPubSubModule
     AppModule.self,
-])
+], composedBy: flightComposeModules)
 ```
 
 ```yaml

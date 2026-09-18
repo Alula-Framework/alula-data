@@ -70,9 +70,9 @@ it clamps to one millisecond instead.
 ## Using it
 
 ```swift
-try await Flight.bootstrap(configuration: .load(), modules: [
+await Flight.run(configuration: try .load(), modules: [
     ValkeyDataModule<PrimaryDataSource>.self,
-])
+], composedBy: flightComposeModules)
 ```
 
 ```yaml

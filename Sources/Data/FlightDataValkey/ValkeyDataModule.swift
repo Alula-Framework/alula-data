@@ -10,7 +10,7 @@ import Valkey
 /// ```swift
 /// await Flight.run(configuration: try .load(), modules: [
 ///     ValkeyDataModule<PrimaryDataSource>.self,
-///     PostgresDataModule<PrimaryDataSource>.self,   // coexists under names
+///     PostgresDataModule<PrimaryDataSource>.self,   // different provided type
 /// ], composedBy: flightComposeModules)
 /// ```
 ///

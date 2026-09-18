@@ -39,8 +39,9 @@ FLIGHT_MIGRATE_BUILD_DOCS=1 swift package generate-documentation \
     --target FlightMigrate --warnings-as-errors
 ```
 
-CI runs exactly these against Swift 6.0 and 6.2, with a Postgres service
-container — and **fails rather than skips** if the database is unreachable. A
+CI runs exactly these on Swift 6.3.3 — the one toolchain the matrix pins, and
+the floor `swift-tools-version: 6.3` requires — with a Postgres service
+container, and **fails rather than skips** if the database is unreachable. A
 green run that quietly skipped every integration test proves almost nothing,
 and this suite's entire value is what it proves against real Postgres.
 
