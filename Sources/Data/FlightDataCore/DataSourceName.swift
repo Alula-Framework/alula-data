@@ -13,7 +13,10 @@
 ///
 /// await Flight.run(
 ///     configuration: try Configuration.load(),
-///     modules: [PostgresDataModule<Analytics>.self],
+///     modules: [
+///         PostgresDataModule<PrimaryDataSource>.self,
+///         PostgresDataModule<Analytics>.self,
+///     ],
 ///     composedBy: flightComposeModules
 /// )
 /// ```
@@ -21,13 +24,16 @@
 /// Each generic instantiation is a distinct module type, so the module DAG and
 /// health tracking distinguish them with no extra machinery.
 ///
-/// **One datasource module of a given store per application, for now.** Two
-/// instantiations — `<PrimaryDataSource>` and `<Analytics>` — both provide the
-/// same type, `PostgresDataSource`, and composition keys registrations by type
-/// alone, so listing both fails the build with "two modules provide
-/// PostgresDataSource". The generic parameter names the *configuration key*,
-/// not the provided type. Modules of different stores (`ValkeyDataModule` beside
-/// `PostgresDataModule`) coexist fine, because their provided types differ.
+/// Both provide `PostgresDataSource`, so the application nominates one for
+/// unqualified injection with `FlightModule.defaultProviders`, and whatever
+/// wants the other names it with `@Inject(from: PostgresDataModule<Analytics>.self)`.
+/// Modules of *different* stores (`ValkeyDataModule` beside
+/// `PostgresDataModule`) never need either, because their provided types
+/// differ.
+///
+/// **Requires flight 0.21.0**, which made a generic module's instantiations
+/// distinct. Before it both collapsed to one binding and this did not
+/// compose.
 public protocol DataSourceName {
     /// The name as it appears in configuration (`datasource.<name>.…`) and
     /// as the registration qualifier for the datasource's components.

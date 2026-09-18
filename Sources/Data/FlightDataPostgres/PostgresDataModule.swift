@@ -13,8 +13,10 @@ import ServiceLifecycle
 /// ], composedBy: flightComposeModules)
 /// ```
 ///
-/// One instantiation per application: a second one provides the same type and
-/// fails composition. See `DataSourceName` for why.
+/// A second instantiation is a second pool. Both provide `PostgresDataSource`,
+/// so the application nominates one with `FlightModule.defaultProviders` and
+/// the consumer that wants the other names it with `@Inject(from:)`. Requires
+/// flight 0.21.0; see `DataSourceName`.
 ///
 /// The module owns the pool — `PostgresDataSource`, built in `init` from
 /// configuration — and provides it, along with its `DataSourceLiveness`

@@ -93,24 +93,39 @@ enum Analytics: DataSourceName { static let name = "analytics" }
 
 await Flight.run(configuration: try .load(), modules: [
     FlightWebModule<FlightTransport>.self,
+    PostgresDataModule<PrimaryDataSource>.self,
     PostgresDataModule<Analytics>.self,
     AppModule.self,
 ], composedBy: flightComposeModules)
 ```
 
-> **One datasource module per application, for now.** This example used to
-> list `PostgresDataModule<PrimaryDataSource>` *and* `<Analytics>` together.
-> That does not compose: both instantiations provide the same type,
-> `PostgresDataSource`, and the composition root keys registrations by type
-> alone, so it reports "two modules provide PostgresDataSource" and fails the
-> build. The generic parameter names the *configuration key*, not the provided
-> type.
->
-> `@Inject("analytics")` appeared to resolve this and never did — the
-> qualifier was dropped before wiring, so both properties received the same
-> pool. flight 0.20.0 removed it, which turns a silent misbinding into a build
-> error. Naming on the providing side is the intended fix and is not designed
-> yet; until it lands, a second pool needs a distinct type.
+Both instantiations provide `PostgresDataSource`, so the application says which
+one an unqualified `@Inject` means, and the component that wants the other one
+names it:
+
+```swift
+struct AppModule: FlightModule {
+    static var defaultProviders: [any FlightModule.Type] {
+        [PostgresDataModule<PrimaryDataSource>.self]
+    }
+}
+
+@Service
+final class RollupService: Sendable {
+    @Inject var primary: PostgresDataSource
+    @Inject(from: PostgresDataModule<Analytics>.self) var analytics: PostgresDataSource
+}
+```
+
+Every repository that just wants *the* pool is untouched — `defaultProviders`
+exists so adding a second one does not make every consumer say which. Both
+resolve at build time to a stored property read directly; there is no lookup.
+
+**Requires flight 0.21.0.** Before it, two instantiations of one generic module
+collapsed into a single binding and this did not compose at all — the shape was
+documented here from the beginning and never worked. `@Inject("analytics")`
+appeared to address it in an even earlier release and never did: the qualifier
+was dropped before wiring, so both properties received the same pool.
 
 A repository holds the **pool** and brackets each operation — it injects the
 pool, and the composition root builds it from the datasource module:
