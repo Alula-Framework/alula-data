@@ -4,10 +4,46 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-09-18
 
-Requires flight 0.18.0, and `Package.swift` now says so — this release cannot
+Requires flight 0.21.0, and `Package.swift` says so — this release cannot
 resolve against an earlier flight.
+
+### Added
+
+- **Two datasources of one store compose.** This package has documented
+  `PostgresDataModule<PrimaryDataSource>` beside `PostgresDataModule<Analytics>`
+  since the beginning, and it never worked: flight's composer discarded a
+  generic module's type argument, so both instantiations collapsed into one
+  binding and the second was never constructed. flight 0.21.0 fixed that and
+  supplied the two pieces that resolve the pair:
+
+  ```swift
+  struct AppModule: FlightModule {
+      static var dependencies: [any FlightModule.Type] {
+          [PostgresDataModule<PrimaryDataSource>.self, PostgresDataModule<Analytics>.self]
+      }
+      // Which one an unqualified `@Inject var pool: PostgresDataSource` means.
+      static var defaultProviders: [any FlightModule.Type] {
+          [PostgresDataModule<PrimaryDataSource>.self]
+      }
+  }
+
+  @Service
+  final class RollupService: Sendable {
+      @Inject var primary: PostgresDataSource
+      @Inject(from: PostgresDataModule<Analytics>.self) var analytics: PostgresDataSource
+  }
+  ```
+
+  Every repository that wants *the* pool is unchanged — a default exists so
+  that adding a second one does not make every consumer say which. Modules of
+  different stores (`ValkeyDataModule` beside `PostgresDataModule`) need
+  neither, because their provided types already differ.
+
+  `@Inject("analytics")` was never this. It was removed in flight 0.20.0
+  because the qualifier was dropped before wiring and both properties silently
+  received the same pool.
 
 ### Changed
 
