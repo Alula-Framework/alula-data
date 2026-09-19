@@ -40,6 +40,9 @@ public struct FlightCacheModule: FlightModule {
     let inMemory: InMemoryCache
 
     /// - Parameters:
+    ///   - configuration: The loaded configuration, which the in-memory store
+    ///     reads `cache.memory.max_entries` and `cache.default_ttl` from. A
+    ///     bad value fails composition rather than the first cache read.
     ///   - adapter: A distributed cache, from an adapter module. Nil means the
     ///     in-memory store — the single-instance case, and the default.
     ///   - codec: The wire format, when the deployment chose one.
