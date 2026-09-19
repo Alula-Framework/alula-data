@@ -18,8 +18,14 @@ on:
         default: ""
   workflow_dispatch:
 
+# The literal prefix is load-bearing. `github.workflow` and `github.ref`
+# resolve to the *caller's* values inside a reusable workflow, so without it
+# this group is identical to the one flight's own run already occupies when it
+# calls us — and with cancel-in-progress, the called job can never be
+# scheduled. That is why the `flight-data builds against this commit` job has
+# never once appeared in a flight CI run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: flight-data-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
