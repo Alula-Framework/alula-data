@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-09-19
+
+### Fixed
+
+- **`flight-migrate --version` reported 0.5.1.** The constant is hand-written —
+  a build plugin cannot see the tag — and went stale across 0.6.0 and 0.7.0.
+  A test pins it to the changelog's most recent release, added the last time
+  this happened, and it had been failing into a CI job nobody could see.
+
+- **`FlightCacheModule.init` documented two of its three parameters.** DocC
+  treats a partially documented parameter list as an error under
+  `--warnings-as-errors`, which is the whole docs job; all ten targets build
+  clean now.
+
+### Changed
+
+- **macOS builds and the job is required.** It was advisory on the grounds
+  that swift-configuration could not compile on Darwin. That is an SDK
+  question rather than an upstream dead end: on the `macos-26` image it builds
+  with the deployment target untouched. Requires flight 0.21.2, which is the
+  first release a Mac can build.
+
+- **flight's CI builds this package on every commit again.** The wiring had
+  never once run: a concurrency group that resolves to the caller's cancelled
+  the job before it started, a bare checkout cloned the caller rather than
+  this package, and the manifest repoint ran `python3`, which the slim Swift
+  images do not have.
+
+### Documentation
+
+- Requirements state the build SDK and the deployment target separately,
+  because they are different numbers: what you build runs on macOS 15, and
+  compiling it on a Mac needs the macOS 26 SDK.
+- Install instructions point at 0.7.x rather than 0.6.0.
+
 ## [0.7.0] - 2026-09-18
 
 Requires flight 0.21.0, and `Package.swift` says so — this release cannot
