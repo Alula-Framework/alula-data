@@ -75,8 +75,22 @@ consumer and asserting no gated dependency reached it.
 
 ## Requirements
 
-Swift 6.3+ (see Traits above for why), macOS 15+ or Linux. Strict concurrency
-throughout.
+| | Requirement |
+| --- | --- |
+| Swift | 6.3+ — see [Traits](#traits) for why |
+| flight | **0.21.2 or later** |
+| Deployment target | macOS 15+, or Linux |
+| Building on macOS | the macOS 26 SDK (Xcode 26) |
+
+Strict concurrency throughout.
+
+The last two rows are different requirements. What you build runs on macOS 15;
+*compiling* it on a Mac needs the newer SDK, because flight's configuration
+layer resolves to FoundationEssentials only where the SDK provides it. And
+flight 0.21.2 is the floor rather than a suggestion: every earlier release
+calls a macOS 26+ API at a macOS 15 deployment target, so a Mac could not build
+this package against them at any SDK. Verified on `macos-26`, which is what the
+CI job runs.
 
 ## Running the tests
 
