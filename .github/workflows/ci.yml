@@ -32,6 +32,9 @@ jobs:
   test:
     name: Test (Swift ${{ matrix.swift }})
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flight-data
     strategy:
       fail-fast: false
       matrix:
@@ -89,6 +92,15 @@ jobs:
         with:
           repository: Flight-Framework/flight-data
           ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+          # SwiftPM takes a package's identity from its directory name, and
+          # inside a reusable workflow the workspace is named after the
+          # *caller* — `/__w/flight/flight`. Checked out at the root, this
+          # package therefore claimed the identity `flight`, collided with
+          # its own dependency on flight, and failed with
+          #   product 'FlightScheduler' required by package 'flight'
+          #   target 'FlightSchedulerPostgresTests' not found in package 'flight'
+          # which reads like flight dropped a product. Name the directory.
+          path: flight-data
 
       # Only when called with a ref. A standalone run resolves flight by URL,
       # exactly as a consumer does; a called run must test the commit under
@@ -100,7 +112,12 @@ jobs:
         with:
           repository: Flight-Framework/flight
           ref: ${{ inputs.flight_ref }}
-          path: .flight-under-review
+          # Named `flight`, not `.flight-under-review`: a path dependency's
+          # identity is its last path component, so the tidier name would
+          # have resolved to `flight-under-review` and matched none of the
+          # `package: "flight"` references in the targets below. The same
+          # rule that broke the checkout above, one line further on.
+          path: flight
           token: ${{ secrets.SWIFTFLIGHT_CI_TOKEN }}
 
       - name: Point the manifest at it
@@ -113,7 +130,7 @@ jobs:
           def to_path(match):
               tail = match.group(1)
               traits = re.search(r'(traits:\s*\[[^\]]*\])', tail)
-              args = 'path: ".flight-under-review"'
+              args = 'path: "../flight"'
               if traits:
                   args += f", {traits.group(1)}"
               return f".package({args})"
@@ -122,7 +139,7 @@ jobs:
               to_path, text)
           manifest.write_text(text)
           PY
-          grep -n 'flight-under-review' Package.swift || {
+          grep -n 'path: "../flight"' Package.swift || {
             echo "::error::manifest rewrite did not take — the flight dependency was not repointed"
             exit 1
           }
@@ -170,6 +187,9 @@ jobs:
     # drift without blocking merges until that reformat lands on its own.
     name: Format (advisory)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flight-data
     continue-on-error: true
     container: swift:6.3.3
 
@@ -197,6 +217,15 @@ jobs:
         with:
           repository: Flight-Framework/flight-data
           ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+          # SwiftPM takes a package's identity from its directory name, and
+          # inside a reusable workflow the workspace is named after the
+          # *caller* — `/__w/flight/flight`. Checked out at the root, this
+          # package therefore claimed the identity `flight`, collided with
+          # its own dependency on flight, and failed with
+          #   product 'FlightScheduler' required by package 'flight'
+          #   target 'FlightSchedulerPostgresTests' not found in package 'flight'
+          # which reads like flight dropped a product. Name the directory.
+          path: flight-data
 
 
       - name: Check formatting
@@ -205,12 +234,24 @@ jobs:
   docs:
     name: Build documentation
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flight-data
     container: swift:6.3.3
     steps:
       - uses: actions/checkout@v4
         with:
           repository: Flight-Framework/flight-data
           ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+          # SwiftPM takes a package's identity from its directory name, and
+          # inside a reusable workflow the workspace is named after the
+          # *caller* — `/__w/flight/flight`. Checked out at the root, this
+          # package therefore claimed the identity `flight`, collided with
+          # its own dependency on flight, and failed with
+          #   product 'FlightScheduler' required by package 'flight'
+          #   target 'FlightSchedulerPostgresTests' not found in package 'flight'
+          # which reads like flight dropped a product. Name the directory.
+          path: flight-data
 
       # Every module with a .docc catalogue, each with --warnings-as-errors:
       # an unresolved symbol link, a doc comment naming a renamed parameter,
@@ -239,6 +280,9 @@ jobs:
   macos:
     name: Build on macOS
     runs-on: macos-26
+    defaults:
+      run:
+        working-directory: flight-data
     # Advisory, and the reason is upstream rather than here.
     #
     # apple/swift-configuration 1.2.0 — the latest release — does not
@@ -257,6 +301,15 @@ jobs:
         with:
           repository: Flight-Framework/flight-data
           ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+          # SwiftPM takes a package's identity from its directory name, and
+          # inside a reusable workflow the workspace is named after the
+          # *caller* — `/__w/flight/flight`. Checked out at the root, this
+          # package therefore claimed the identity `flight`, collided with
+          # its own dependency on flight, and failed with
+          #   product 'FlightScheduler' required by package 'flight'
+          #   target 'FlightSchedulerPostgresTests' not found in package 'flight'
+          # which reads like flight dropped a product. Name the directory.
+          path: flight-data
 
       # swiftly rather than swift-actions/setup-swift: this package declares
       # swift-tools-version 6.3, and setup-swift only indexes up to 6.2.
@@ -291,5 +344,6 @@ jobs:
     name: Starter templates
     uses: Flight-Framework/flight-cli/.github/workflows/ci.yml@main
     with:
+      caller: flight-data
       flight_data_ref: ${{ github.event.pull_request.head.sha || github.sha }}
     secrets: inherit
