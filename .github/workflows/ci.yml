@@ -64,6 +64,13 @@ jobs:
       # those repositories are private — so git needs the token. The sibling
       # checkouts this replaced existed only for the path dependencies that
       # v0.1.0 removed. This step disappears when the repositories go public.
+      # The official Swift images are slim: no python3, which the manifest
+      # repoint below runs on. flight-cli's workflow has installed it since it
+      # was written; this one never did, and the step died with exit 127 the
+      # first time it was ever reached.
+      - name: Install python3
+        run: apt-get update -qq && apt-get install -y -qq python3
+
       - name: Authenticate git for private package resolution
         run: |
           if [ -z "${{ secrets.SWIFTFLIGHT_CI_TOKEN }}" ]; then
@@ -74,6 +81,17 @@ jobs:
           git config --global --add safe.directory '*'
 
       - uses: actions/checkout@v4
+        with:
+          repository: Flight-Framework/flight-data
+          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+        with:
+          # Inside a reusable workflow the `github` context is the *caller's*,
+          # so a bare checkout pulls flight and these steps run against the
+          # wrong package — which is exactly how the called job came to report
+          # "no target named 'FlightDataCore'". Name the repository, and pick
+          # the ref: our own commit on our own runs, main when flight drives.
+          repository: Flight-Framework/flight-data
+          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
 
       # Only when called with a ref. A standalone run resolves flight by URL,
       # exactly as a consumer does; a called run must test the commit under
@@ -179,6 +197,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: Flight-Framework/flight-data
+          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
 
 
       - name: Check formatting
@@ -190,6 +211,9 @@ jobs:
     container: swift:6.3.3
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: Flight-Framework/flight-data
+          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
 
       # Every module with a .docc catalogue, each with --warnings-as-errors:
       # an unresolved symbol link, a doc comment naming a renamed parameter,
@@ -234,6 +258,9 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: Flight-Framework/flight-data
+          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
 
       # swiftly rather than swift-actions/setup-swift: this package declares
       # swift-tools-version 6.3, and setup-swift only indexes up to 6.2.
