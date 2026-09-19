@@ -238,7 +238,7 @@ jobs:
 
   macos:
     name: Build on macOS
-    runs-on: macos-15
+    runs-on: macos-26
     # Advisory, and the reason is upstream rather than here.
     #
     # apple/swift-configuration 1.2.0 — the latest release — does not
@@ -252,7 +252,6 @@ jobs:
     # [.macOS(.v15)]` claim in Package.swift is either true or it is not,
     # and a permanently red required check just teaches people to ignore
     # CI.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
