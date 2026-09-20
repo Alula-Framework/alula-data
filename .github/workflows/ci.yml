@@ -349,6 +349,17 @@ jobs:
   # request that causes it, not in a new user's first ten minutes.
   templates:
     name: Starter templates
+    # Only on our own runs. `github.sha` inside a reusable workflow is the
+    # *caller's*, so when flight drives this workflow the line below passed
+    # flight's commit as `flight_data_ref` and flight-cli tried to check out
+    # flight-data at it:
+    #
+    #     fatal: remote error: upload-pack: not our ref 9bee9796…
+    #
+    # There is nothing to pass instead — this workflow cannot learn its own
+    # sha when it is called — and nothing is lost by standing down: flight's
+    # CI calls flight-cli directly, with the refs that are correct there.
+    if: inputs.flight_ref == ''
     uses: Flight-Framework/flight-cli/.github/workflows/ci.yml@main
     with:
       caller: flight-data
