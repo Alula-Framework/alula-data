@@ -71,10 +71,17 @@ jobs:
       # repoint below runs on. flight-cli's workflow has installed it since it
       # was written; this one never did, and the step died with exit 127 the
       # first time it was ever reached.
+      # `working-directory` overridden on both pre-checkout steps: the job
+      # default is `flight-data/`, and that directory does not exist until
+      # the checkout below creates it. Without this the very first step
+      # failed in under a second with a missing-directory error, before
+      # anything it was supposed to test had run.
       - name: Install python3
+        working-directory: ${{ github.workspace }}
         run: apt-get update -qq && apt-get install -y -qq python3
 
       - name: Authenticate git for private package resolution
+        working-directory: ${{ github.workspace }}
         run: |
           if [ -z "${{ secrets.SWIFTFLIGHT_CI_TOKEN }}" ]; then
             echo "::error::SWIFTFLIGHT_CI_TOKEN is not set."
