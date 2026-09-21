@@ -19,7 +19,7 @@ in-memory store unless a module like this one provides a shared one.
 func login(_ context: RequestContext, body: LoginForm) async throws -> Response {
     let account = try await accounts.authenticate(body.email, body.password)
     let session = try context.requireSession()
-    try session.set("account", account.id)      // encoded with the app's JSON coders
+    try session.set("account", account.id)      // any Codable value
     session.regenerate()                          // new id on login, against fixation
     try session.flash("notice", "Welcome back.")  // readable by the next request only
     return .seeOther("/")
