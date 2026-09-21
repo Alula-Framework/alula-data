@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Requires flight 0.23.0.
+
+### Added
+
+- **`FlightSessionsValkey`.** The shared store behind flight's new sessions:
+  `ValkeySessionStore` implements `SessionStore` with one key per session
+  under `flight-session:` and the TTL as native expiry, and
+  `FlightSessionsValkeyModule` provides it as `store: any SessionStore` for
+  `FlightSessionsModule` to take in composition. Every failure throws — the
+  middleware answers 503 — so unlike the cache adapter there is no breaker
+  and no fail-open; the pool's own circuit breaker still bounds a down
+  server. Configuration is `sessions.valkey.*`, kebab-case with duration
+  strings, and the URL grammar and driver configuration are the cache
+  adapter's, reused rather than copied a third time. Docs/sessions-valkey.md
+  is the guide.
+
 ## [0.7.1] - 2026-09-19
 
 ### Fixed

@@ -43,6 +43,7 @@ let package = Package(
         .library(name: "FlightCacheValkey", targets: ["FlightCacheValkey"]),
         .library(name: "FlightDataValkey", targets: ["FlightDataValkey"]),
         .library(name: "FlightPubSubValkey", targets: ["FlightPubSubValkey"]),
+        .library(name: "FlightSessionsValkey", targets: ["FlightSessionsValkey"]),
     ],
     traits: [
         // Opt-in: name a driver to get it, and resolve nothing else.
@@ -71,7 +72,7 @@ let package = Package(
         // never FlightWeb. Opting out of flight's default "Web" trait keeps
         // Hummingbird, NIO, and the TLS stack out of every consumer that
         // wants a cache or a data source but not an HTTP server.
-        .package(url: "https://github.com/Flight-Framework/flight.git", from: "0.21.2", traits: []),
+        .package(url: "https://github.com/Flight-Framework/flight.git", from: "0.23.0", traits: []),
         .package(url: "https://github.com/Flight-Framework/swift-changeset.git", from: "0.2.0"),
         .package(url: "https://github.com/Flight-Framework/hangar.git", from: "0.5.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
@@ -256,6 +257,22 @@ let package = Package(
             path: "Sources/Cache/FlightCacheValkey",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        // Sessions over Valkey. Depends on the cache adapter for the URL
+        // grammar and the driver configuration builder — the second copy of
+        // each was already one too many, and the third would be this file.
+        .target(
+            name: "FlightSessionsValkey",
+            dependencies: [
+                "FlightCacheValkey",
+                .product(name: "FlightCore", package: "flight"),
+                .product(name: "FlightSessions", package: "flight"),
+                .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
+            ],
+            path: "Sources/Sessions/FlightSessionsValkey",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         .target(
             name: "FlightDataValkey",
             dependencies: [
@@ -330,6 +347,18 @@ let package = Package(
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
             ],
             path: "Tests/Cache/FlightCacheValkeyTests"
+        ),
+        .testTarget(
+            name: "FlightSessionsValkeyTests",
+            dependencies: [
+                "FlightSessionsValkey",
+                .product(name: "FlightCore", package: "flight"),
+                .product(name: "FlightSessions", package: "flight"),
+                .product(name: "FlightSessionsTesting", package: "flight"),
+                .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
+            ],
+            path: "Tests/Sessions/FlightSessionsValkeyTests",
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "FlightPubSubValkeyTests",
