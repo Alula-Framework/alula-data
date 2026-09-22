@@ -8,7 +8,7 @@ import Foundation
 /// and reading the package manifest at runtime is not a thing a compiled
 /// binary can do. It sat at "0.1.0" through two releases, so it is pinned by a
 /// test that reads the changelog's most recent version.
-let flightMigrateVersion = "0.9.0"
+let flightMigrateVersion = "0.10.0"
 
 /// Options shared by every command that connects to the database.
 struct DatabaseOptions: ParsableArguments {

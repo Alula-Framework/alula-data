@@ -1,13 +1,13 @@
 {
-  "originHash" : "f570f4983dc0a6208d34a18a256a9c6f3cfa74833e4665fd90f0aac7c6e9589f",
+  "originHash" : "8eae780f8a4e3d74932f497b7dd9c96f8772a5da8bb2dcd882e8e303b0acb43f",
   "pins" : [
     {
       "identity" : "flight",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/flight.git",
       "state" : {
-        "revision" : "77fa1c2acb8a285621d016a52a12981763442825",
-        "version" : "0.26.1"
+        "revision" : "a28fa65b8f555af9c4f33371e025fcf3135ee54f",
+        "version" : "0.32.0"
       }
     },
     {
@@ -107,24 +107,6 @@
       "state" : {
         "revision" : "cc504a45f6ce73ce6067837d7ac19fa67b229a56",
         "version" : "1.5.0"
-      }
-    },
-    {
-      "identity" : "swift-docc-plugin",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swiftlang/swift-docc-plugin",
-      "state" : {
-        "revision" : "647c708be89f834fa6a6d4945442793a77ddf5b6",
-        "version" : "1.5.0"
-      }
-    },
-    {
-      "identity" : "swift-docc-symbolkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swiftlang/swift-docc-symbolkit",
-      "state" : {
-        "revision" : "b45d1f2ed151d057b54504d653e0da5552844e34",
-        "version" : "1.0.0"
       }
     },
     {

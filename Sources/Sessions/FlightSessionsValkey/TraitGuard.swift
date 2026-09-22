@@ -2,14 +2,15 @@
 // Without it the target's driver dependency is pruned and every file here
 // fails with "no such module" — this turns that into an actionable message.
 #if !Valkey
-#error("""
-    FlightSessionsValkey requires the "Valkey" trait.
+    #error(
+        """
+        FlightSessionsValkey requires the "Valkey" trait.
 
-    Consuming flight-data:
-        .package(url: "https://github.com/Flight-Framework/flight-data.git", \
-                 from: "0.8.0", traits: ["Valkey"])
+        Consuming flight-data:
+            .package(url: "https://github.com/Flight-Framework/flight-data.git", \
+                     from: "0.8.0", traits: ["Valkey"])
 
-    Building flight-data itself:
-        swift build --enable-all-traits
-    """)
+        Building flight-data itself:
+            swift build --enable-all-traits
+        """)
 #endif

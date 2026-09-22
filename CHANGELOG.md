@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-22
+
+Requires flight 0.32.0.
+
+### Added
+
+- **Sign out everywhere, across replicas.** `ValkeySessionStore` is an
+  `OwnerIndexedSessionStore`. Each signed-in session's id is kept in a
+  `flight-session-owner:<subject>` set, and flight's
+  `SessionRuntime.revokeSessions(ownedBy:keeping:)` ends every other
+  session one person has. Before deleting a session, it rereads the record
+  and checks the owner, so a stale index entry can't end someone else's
+  session. The set expires with its sessions (`PEXPIRE NX`, then `GT`).
+- **`ValkeyOneTimeTokenStore`**: flight's `OneTimeTokenStore` over
+  `SET … PX` and `GETDEL`. Password-reset, verification and magic links
+  work exactly once across every replica, and twenty racing redemptions of
+  one link get one success. `init(sharing:)` reuses the session store's
+  client. Needs Valkey or Redis 6.2+.
+
 ## [0.9.0] - 2026-09-22
 
 Requires flight 0.26.1.

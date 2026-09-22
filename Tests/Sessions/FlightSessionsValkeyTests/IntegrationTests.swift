@@ -68,7 +68,9 @@ private func withStore<T>(
 struct ValkeySessionStoreIntegrationTests {
     private let record = Data(#"{"values":{},"flash":{}}"#.utf8)
 
-    @Test("save/load round-trip, under the flight-session: key prefix, with native expiry", arguments: TestServer.available)
+    @Test(
+        "save/load round-trip, under the flight-session: key prefix, with native expiry",
+        arguments: TestServer.available)
     func roundTrip(server: TestServer) async throws {
         try await withStore(server) { store in
             let id = SessionID.generate()
@@ -106,7 +108,9 @@ struct ValkeySessionStoreIntegrationTests {
         }
     }
 
-    @Test("a TTL that has already run out deletes rather than storing", arguments: TestServer.available)
+    @Test(
+        "a TTL that has already run out deletes rather than storing",
+        arguments: TestServer.available)
     func nonPositiveTTLDeletes(server: TestServer) async throws {
         try await withStore(server) { store in
             let id = SessionID.generate()
@@ -145,5 +149,121 @@ struct ValkeySessionStoreIntegrationTests {
             }
         }
         #expect(elapsed < .seconds(3), "the pool breaker bounds the first call: \(elapsed)")
+    }
+}
+
+// Extensions of the one serialized suite, not suites of their own: every
+// suite here FLUSHDBs the same database, and two suites run in parallel with
+// each other would wipe each other's keys mid-test.
+extension ValkeySessionStoreIntegrationTests {
+    private func encodedRecord(owner: String?) throws -> Data {
+        try SessionRecord(
+            createdAt: Date(), expiresAt: Date().addingTimeInterval(60), owner: owner
+        ).encoded()
+    }
+
+    @Test(
+        "revoking by owner ends that owner's other sessions and no one else's",
+        arguments: TestServer.available)
+    func revokes(server: TestServer) async throws {
+        try await withStore(server) { store in
+            let (laptop, phone, grace) = (
+                SessionID.generate(), SessionID.generate(), SessionID.generate()
+            )
+            try await store.save(
+                laptop, try encodedRecord(owner: "ada"), ttl: .seconds(60), owner: "ada")
+            try await store.save(
+                phone, try encodedRecord(owner: "ada"), ttl: .seconds(60), owner: "ada")
+            try await store.save(
+                grace, try encodedRecord(owner: "grace"), ttl: .seconds(60), owner: "grace")
+
+            #expect(try await store.deleteSessions(ownedBy: "ada", keeping: laptop) == 1)
+            #expect(try await store.load(laptop) != nil)
+            #expect(try await store.load(phone) == nil)
+            #expect(try await store.load(grace) != nil)
+        }
+    }
+
+    @Test(
+        "a stale index entry never ends a session whose owner has changed",
+        arguments: TestServer.available)
+    func staleEntryIsHarmless(server: TestServer) async throws {
+        try await withStore(server) { store in
+            let id = SessionID.generate()
+            try await store.save(
+                id, try encodedRecord(owner: "ada"), ttl: .seconds(60), owner: "ada")
+            // Re-saved with no owner — the index still lists it under ada.
+            try await store.save(id, try encodedRecord(owner: nil), ttl: .seconds(60), owner: nil)
+            #expect(try await store.deleteSessions(ownedBy: "ada", keeping: nil) == 0)
+            #expect(try await store.load(id) != nil)
+            // And the stale entry was pruned.
+            let members = try await store.client.smembers(ValkeyKey("flight-session-owner:ada"))
+                .decode(as: [String].self)
+            #expect(members.isEmpty)
+        }
+    }
+
+    @Test(
+        "the owner index gets an expiry on first save and is only ever extended",
+        arguments: TestServer.available)
+    func indexExpires(server: TestServer) async throws {
+        try await withStore(server) { store in
+            let index = ValkeyKey("flight-session-owner:ada")
+            try await store.save(
+                SessionID.generate(), try encodedRecord(owner: "ada"), ttl: .seconds(60),
+                owner: "ada")
+            let first = try await store.client.pttl(index)
+            #expect(first > 55_000 && first <= 60_000, "a fresh set has an expiry: \(first)")
+            try await store.save(
+                SessionID.generate(), try encodedRecord(owner: "ada"), ttl: .seconds(5),
+                owner: "ada")
+            #expect(try await store.client.pttl(index) > 55_000, "a shorter save never shortens it")
+        }
+    }
+}
+
+extension ValkeySessionStoreIntegrationTests {
+    private func withTokens<T>(
+        _ server: TestServer, _ body: (ValkeyOneTimeTokenStore) async throws -> T
+    ) async throws -> T {
+        try await withStore(server) { sessions in
+            try await body(ValkeyOneTimeTokenStore(sharing: sessions))
+        }
+    }
+
+    @Test(
+        "take returns the record once, under the flight-token: prefix, with native expiry",
+        arguments: TestServer.available)
+    func takeOnce(server: TestServer) async throws {
+        try await withTokens(server) { tokens in
+            try await tokens.put("digest-1", Data("record".utf8), ttl: .seconds(60))
+            let pttl = try await tokens.client.pttl(ValkeyKey("flight-token:digest-1"))
+            #expect(pttl > 55_000 && pttl <= 60_000)
+            #expect(try await tokens.take("digest-1") == Data("record".utf8))
+            #expect(try await tokens.take("digest-1") == nil)
+        }
+    }
+
+    @Test("twenty racing takes of one record get it exactly once", arguments: TestServer.available)
+    func racingTakes(server: TestServer) async throws {
+        try await withTokens(server) { tokens in
+            try await tokens.put("digest-race", Data("record".utf8), ttl: .seconds(60))
+            let winners = await withTaskGroup(of: Bool.self) { group in
+                for _ in 0..<20 {
+                    group.addTask { (try? await tokens.take("digest-race")) != nil }
+                }
+                return await group.reduce(0) { $0 + ($1 ? 1 : 0) }
+            }
+            #expect(winners == 1)
+        }
+    }
+
+    @Test("an expired record is gone", arguments: TestServer.available)
+    func expires(server: TestServer) async throws {
+        try await withTokens(server) { tokens in
+            try await tokens.put("digest-short", Data("record".utf8), ttl: .milliseconds(200))
+            try await Task.sleep(for: .milliseconds(400))
+            #expect(try await tokens.take("digest-short") == nil)
+        }
     }
 }

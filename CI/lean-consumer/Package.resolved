@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Flight-Framework/flight.git",
       "state" : {
-        "revision" : "a6ee8bc287cc1e7bc3e979d09a51f4b91edd1afd",
-        "version" : "0.14.0"
+        "revision" : "a28fa65b8f555af9c4f33371e025fcf3135ee54f",
+        "version" : "0.32.0"
       }
     },
     {

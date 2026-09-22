@@ -36,7 +36,8 @@ for the same reasons the cache adapter is not.
 
 | Piece | Contents |
 |---|---|
-| `ValkeySessionStore` | `SessionStore` over `ValkeyClient`: `GET`, `SET … PX`, `UNLINK`. Every failure throws — the middleware answers 503, and there is no breaker and no fail-open |
+| `ValkeySessionStore` | `SessionStore` over `ValkeyClient`: `GET`, `SET … PX`, `UNLINK`. Every failure throws: the middleware answers 503, and there is no breaker and no fail-open. It's also an `OwnerIndexedSessionStore`, so `revokeSessions(ownedBy:)` ("sign out everywhere") works across replicas |
+| `ValkeyOneTimeTokenStore` | flight's `OneTimeTokenStore`: `SET … PX` to issue, `GETDEL` to redeem, so a reset or verification link works exactly once even when two requests race. `init(sharing:)` reuses the session store's client |
 | `ValkeySessionSettings` | `sessions.valkey.*` — its own root; both timeout phases; pool sizing |
 | `FlightSessionsValkeyModule` | Provides `store: any SessionStore`, which `FlightSessionsModule` takes as its store, and runs the client pool as its service in the infrastructure phase |
 
@@ -50,8 +51,8 @@ for the same reasons the cache adapter is not.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/Flight-Framework/flight.git", from: "0.23.0", traits: ["Web"]),
-.package(url: "https://github.com/Flight-Framework/flight-data.git", from: "0.8.0", traits: ["Valkey"]),
+.package(url: "https://github.com/Flight-Framework/flight.git", from: "0.32.0", traits: ["Web"]),
+.package(url: "https://github.com/Flight-Framework/flight-data.git", from: "0.10.0", traits: ["Valkey"]),
 …
 .product(name: "FlightSessionsValkey", package: "flight-data"),
 ```
@@ -113,6 +114,27 @@ as it takes this module's. The guide linked above has the worked example.
 `ValkeySessionStore.swift` here is a complete one in eighty lines and is
 the shape to copy: native expiry if the backend has it, `expiresAt` read
 from the record on load if it does not, and no fail-open.
+
+## Signing out everywhere
+
+Each signed-in session's id is also kept in a set per owner,
+`flight-session-owner:<subject>`. `SessionRuntime.revokeSessions(ownedBy:keeping:)`
+reads that set. Before ending a session, it rereads the session's own record
+and checks the owner is still the one being revoked. A stale entry in the
+set therefore can never end someone else's session, and it's pruned on the
+way. The set expires no sooner than its newest session. `PEXPIRE NX` gives
+it an expiry the first time, and `PEXPIRE GT` only ever extends it, because
+`GT` alone treats a key with no expiry as infinite and would never set one.
+
+## One-time links
+
+```swift
+let tokens = OneTimeTokens(store: ValkeyOneTimeTokenStore(sharing: sessionStore))
+```
+
+Keys are `flight-token:` plus the digest flight's `OneTimeTokens` computes,
+never the token itself. Redeeming is one `GETDEL`, which needs Valkey or
+Redis 6.2 or later.
 
 ## Keys, and sharing one Valkey
 
