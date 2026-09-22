@@ -276,7 +276,7 @@ jobs:
                         FlightDataValkey FlightCacheValkey FlightDataTesting \
                         FlightMigrate FlightMigrateCore \
                         FlightSchedulerPostgres FlightPubSubValkey \
-                        FlightSessionsValkey; do
+                        FlightSessionsValkey FlightRateLimitValkey; do
             echo "::group::$target"
             swift package --enable-all-traits \
               --allow-writing-to-directory "./docs/$target" \

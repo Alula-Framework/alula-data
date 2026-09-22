@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-22
+
+Requires flight 0.26.1.
+
+### Added
+
+- **`FlightRateLimitValkey`.** The shared store behind flight's new rate
+  limiter, so a quota is enforced once across every replica rather than once
+  per replica. The whole decision is a single `EVAL`: GCRA's state is one
+  timestamp per key, so deciding and recording is a read, a comparison and a
+  write of one value, which a Lua script does atomically on the server in one
+  round trip — no lock, no `WATCH`/`MULTI` retry, and no window in which two
+  replicas both admit a call against the same under-quota key. The script
+  uses the server's `TIME`, because a limiter keyed on each client's idea of
+  now has as many opinions as there are pods, and it sets a TTL equal to the
+  time until the key is back at full, so idle keys are reclaimed without a
+  sweeper.
+
+  Nothing here fails open: a failure throws and the caller decides, which is
+  what lets flight's middleware serve the request while a login throttle
+  refuses. Configuration is `rate-limit.valkey.*`, with a shorter default
+  command timeout than the session store's, since a limiter sits in front of
+  work the caller wants done. The URL grammar and driver configuration are
+  the cache adapter's, reused rather than written a third time.
+
+  The integration suite runs the same scenarios against this store and
+  flight's in-memory one and compares the decisions, because two
+  implementations of one algorithm are only trustworthy if something checks
+  them against each other. It earned that on its first run: flight's GCRA
+  was doing its arithmetic in fractional seconds, and against wall-clock
+  timestamps near 1.8e15 that lost enough precision to report one permit
+  fewer than were free. Fixed in flight 0.26.1, which this release requires.
+
+### Fixed
+
+- **`flight-migrate --version` reported 0.7.1 again.** The constant is
+  hand-written, a build plugin cannot see the tag, and it went stale across
+  0.8.0 exactly as it had across 0.6.0 and 0.7.0. The test that pins it to
+  the changelog caught it, in a suite that only runs with servers up — which
+  is why it was not caught at 0.8.0's release.
+
 ## [0.8.0] - 2026-09-21
 
 Requires flight 0.23.0.

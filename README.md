@@ -20,7 +20,7 @@ dependencies no enabled trait reaches — so the drivers sit behind traits.
 | --- | --- | --- |
 | (none) | `FlightCache`, `FlightCacheTesting`, `FlightDataCore`, `FlightDataTesting`, `FlightMigrateCore` | 10 packages, no driver |
 | `traits: ["Postgres"]` | + `FlightDataPostgres`, `FlightMigrate`, `FlightMigrateCLI` | + PostgresNIO, Hangar, ArgumentParser |
-| `traits: ["Valkey"]` | + `FlightCacheValkey`, `FlightDataValkey`, `FlightPubSubValkey`, `FlightSessionsValkey` | + valkey-swift, NIOSSL |
+| `traits: ["Valkey"]` | + `FlightCacheValkey`, `FlightDataValkey`, `FlightPubSubValkey`, `FlightSessionsValkey`, `FlightRateLimitValkey` | + valkey-swift, NIOSSL |
 
 Both are opt-in — name a driver to get it:
 
@@ -53,6 +53,7 @@ you need.
 | `FlightMigrate` / `FlightMigrateCLI` | Migration runner and its command line interface. |
 | `FlightCacheValkey` | Distributed cache over Valkey. |
 | `FlightSessionsValkey` | Sessions shared across replicas over Valkey: the store behind flight's `FlightSessionsModule`. Requires the `Valkey` trait. |
+| `FlightRateLimitValkey` | A rate limit enforced once across every replica rather than once per replica: GCRA as a single `EVAL`. Requires the `Valkey` trait. |
 | `FlightDataValkey` | Valkey data source. |
 | `*Testing` | Conformance suites and fakes — including `DataSourceConformance`, the contract every data source must satisfy. |
 
