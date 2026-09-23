@@ -1,17 +1,17 @@
-# Flight Data Valkey
+# Alula Data Valkey
 
-Valkey (and Redis) as a first-class Flight **data store**: typed access to its
+Valkey (and Redis) as a first-class Alula **data store**: typed access to its
 data structures, scope-bound connections, and repository-layer integration, on
-top of Flight Core and [Flight Data Core](data-core.md).
+top of Alula Core and [Alula Data Core](data-core.md).
 
 This is *composition plus stereotypes*, not a from-scratch client: the driver
 and wire protocol are **valkey-swift** — concurrency-native, Valkey/Redis
 compatible, its command coverage generated from Valkey's own command
-specifications. What Flight builds is the seam:
+specifications. What Alula builds is the seam:
 
 | Piece | Contents |
 |---|---|
-| `ValkeyDataSource` | The pool, behind Flight Data Core's `DataSource` seam: synchronous checkout/release, eager dial at service start, broken-connection replacement, `PING` liveness |
+| `ValkeyDataSource` | The pool, behind Alula Data Core's `DataSource` seam: synchronous checkout/release, eager dial at service start, broken-connection replacement, `PING` liveness |
 | `ValkeyDataModule<Name>` | module wiring: the pool + `DataSourceLiveness`, one generic instantiation per named datasource |
 | `ValkeyDataSourceURL` | URL parsing — `valkey://` and `redis://` are exact synonyms (`valkeys://`/`rediss://` for TLS), auth, database number |
 | `multi { … }` | `MULTI`/`EXEC` under its own honest name — an atomic batch, deliberately **not** called a transaction |
@@ -51,7 +51,7 @@ became permanent.
 `ping()` is the probe Actuator reads. Note that `shutdown()` is what
 returns connections: a `ValkeyDataSource` started by hand in a test and
 never shut down keeps its connections for the lifetime of the process.
-Under `Flight.bootstrap` the module's service handles that.
+Under `Alula.bootstrap` the module's service handles that.
 
 ## Writes that partly fail
 
@@ -70,9 +70,9 @@ it clamps to one millisecond instead.
 ## Using it
 
 ```swift
-await Flight.run(configuration: try .load(), modules: [
+await Alula.run(configuration: try .load(), modules: [
     ValkeyDataModule<PrimaryDataSource>.self,
-], composedBy: flightComposeModules)
+], composedBy: alulaComposeModules)
 ```
 
 ```yaml
@@ -146,10 +146,10 @@ same code against every server you configure — that duality **is** the
 compatibility test:
 
 ```
-$ docker run -d --name flight-data-valkey -p 127.0.0.1:56379:6379 valkey/valkey:8-alpine
-$ docker run -d --name flight-data-redis  -p 127.0.0.1:56380:6379 redis:7-alpine
-$ export FLIGHT_VALKEY_TEST_URL="valkey://127.0.0.1:56379"
-$ export FLIGHT_REDIS_TEST_URL="redis://127.0.0.1:56380"
+$ docker run -d --name alula-data-valkey -p 127.0.0.1:56379:6379 valkey/valkey:8-alpine
+$ docker run -d --name alula-data-redis  -p 127.0.0.1:56380:6379 redis:7-alpine
+$ export ALULA_VALKEY_TEST_URL="valkey://127.0.0.1:56379"
+$ export ALULA_REDIS_TEST_URL="redis://127.0.0.1:56380"
 $ swift test
 ```
 
@@ -165,7 +165,7 @@ refinement of) the design doc, in its spirit.
   The obvious design assumes connections can be checked out of the client.
   valkey-swift exposes *only* scoped lending (`withConnection`); its
   `connect()` is internal. The seam still needs synchronous `checkout()`
-  (Flight Data Core delta D1), so — the same resolution as Data Postgres's
+  (Alula Data Core delta D1), so — the same resolution as Data Postgres's
   delta P1 — this package owns a fixed pool: each slot is a task that dials
   through the public `ValkeyConnection.withConnection` and parks, leaving its
   connection in a Mutex-guarded free list; retiring a connection (broken, or
@@ -215,7 +215,7 @@ refinement of) the design doc, in its spirit.
   (0 = never) makes this moot.
 
 - **V7 — session reset on release, and the rest of the convergence debt.**
-  This driver and Flight Data Postgres are the same machine with different
+  This driver and Alula Data Postgres are the same machine with different
   dial tones, and for a while every fix landed on exactly one of them: outage
   backoff here but not there, tolerating a saturated pool in `ping` there but
   not here, session reset there but not here, queueing there but not here.

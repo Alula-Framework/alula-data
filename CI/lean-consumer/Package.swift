@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "LeanConsumer",
-            dependencies: [.product(name: "FlightCache", package: "flight-data")]
+            dependencies: [.product(name: "AlulaCache", package: "alula-data")]
         )
     ]
 )

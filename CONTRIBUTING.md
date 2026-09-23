@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in flight-migrate.
+Thanks for your interest in alula-migrate.
 
 ## Getting set up
 
@@ -14,12 +14,12 @@ swift test          # 122 unit tests; the 7 integration tests skip
 The integration suite needs a **dedicated, throwaway** PostgreSQL:
 
 ```bash
-docker run -d --name flight-migrate-test \
-  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=flight_migrate_test \
+docker run -d --name alula-migrate-test \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=alula_migrate_test \
   -p 55432:5432 postgres:16-alpine
 
-export FLIGHT_MIGRATE_TEST_DATABASE_URL=\
-"postgres://postgres:postgres@localhost:55432/flight_migrate_test?sslmode=disable"
+export ALULA_MIGRATE_TEST_DATABASE_URL=\
+"postgres://postgres:postgres@localhost:55432/alula_migrate_test?sslmode=disable"
 
 swift test          # all 129
 ```
@@ -35,8 +35,8 @@ swift test          # all 129
 ```bash
 swift build -Xswiftc -warnings-as-errors
 swift test                                  # with the database URL set
-FLIGHT_MIGRATE_BUILD_DOCS=1 swift package generate-documentation \
-    --target FlightMigrate --warnings-as-errors
+ALULA_MIGRATE_BUILD_DOCS=1 swift package generate-documentation \
+    --target AlulaMigrate --warnings-as-errors
 ```
 
 CI runs exactly these on Swift 6.3.3 — the one toolchain the matrix pins, and

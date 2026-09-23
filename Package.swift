@@ -3,7 +3,7 @@ import CompilerPluginSupport
 import Foundation
 import PackageDescription
 
-// Flight Data: persistence and caching.
+// Alula Data: persistence and caching.
 //
 // The abstractions and the drivers live together because they break together
 // — a change to the DataSource contract breaks every adapter at once, and
@@ -17,34 +17,34 @@ import PackageDescription
 // PostgresNIO, valkey-swift, NIOSSL, and swift-crypto; with them it resolves
 // none of those.
 //
-//     .package(url: "...flight-data.git", from: "0.1.0")                      // cache + protocols
-//     .package(url: "...flight-data.git", from: "0.1.0", traits: ["Postgres"]) // + Postgres
+//     .package(url: "...alula-data.git", from: "0.11.0")                      // cache + protocols
+//     .package(url: "...alula-data.git", from: "0.11.0", traits: ["Postgres"]) // + Postgres
 //
 // Building this package itself: `swift test --enable-all-traits`.
 let package = Package(
-    name: "flight-data",
+    name: "alula-data",
     platforms: [.macOS(.v15)],
     products: [
         // Always available — no database or cache driver required.
-        .library(name: "FlightCache", targets: ["FlightCache"]),
-        .library(name: "FlightCacheTesting", targets: ["FlightCacheTesting"]),
-        .library(name: "FlightDataCore", targets: ["FlightDataCore"]),
-        .library(name: "FlightDataTesting", targets: ["FlightDataTesting"]),
-        .library(name: "FlightMigrateCore", targets: ["FlightMigrateCore"]),
-        .plugin(name: "FlightMigratePlugin", targets: ["FlightMigratePlugin"]),
+        .library(name: "AlulaCache", targets: ["AlulaCache"]),
+        .library(name: "AlulaCacheTesting", targets: ["AlulaCacheTesting"]),
+        .library(name: "AlulaDataCore", targets: ["AlulaDataCore"]),
+        .library(name: "AlulaDataTesting", targets: ["AlulaDataTesting"]),
+        .library(name: "AlulaMigrateCore", targets: ["AlulaMigrateCore"]),
+        .plugin(name: "AlulaMigratePlugin", targets: ["AlulaMigratePlugin"]),
 
         // Requires the "Postgres" trait.
-        .library(name: "FlightDataPostgres", targets: ["FlightDataPostgres"]),
-        .library(name: "FlightSchedulerPostgres", targets: ["FlightSchedulerPostgres"]),
-        .library(name: "FlightMigrate", targets: ["FlightMigrate"]),
-        .library(name: "FlightMigrateCLI", targets: ["FlightMigrateCLI"]),
+        .library(name: "AlulaDataPostgres", targets: ["AlulaDataPostgres"]),
+        .library(name: "AlulaSchedulerPostgres", targets: ["AlulaSchedulerPostgres"]),
+        .library(name: "AlulaMigrate", targets: ["AlulaMigrate"]),
+        .library(name: "AlulaMigrateCLI", targets: ["AlulaMigrateCLI"]),
 
         // Requires the "Valkey" trait.
-        .library(name: "FlightCacheValkey", targets: ["FlightCacheValkey"]),
-        .library(name: "FlightDataValkey", targets: ["FlightDataValkey"]),
-        .library(name: "FlightPubSubValkey", targets: ["FlightPubSubValkey"]),
-        .library(name: "FlightSessionsValkey", targets: ["FlightSessionsValkey"]),
-        .library(name: "FlightRateLimitValkey", targets: ["FlightRateLimitValkey"]),
+        .library(name: "AlulaCacheValkey", targets: ["AlulaCacheValkey"]),
+        .library(name: "AlulaDataValkey", targets: ["AlulaDataValkey"]),
+        .library(name: "AlulaPubSubValkey", targets: ["AlulaPubSubValkey"]),
+        .library(name: "AlulaSessionsValkey", targets: ["AlulaSessionsValkey"]),
+        .library(name: "AlulaRateLimitValkey", targets: ["AlulaRateLimitValkey"]),
     ],
     traits: [
         // Opt-in: name a driver to get it, and resolve nothing else.
@@ -69,13 +69,13 @@ let package = Package(
         ),
     ],
     dependencies: [
-        // traits: [] — flight-data needs only the container and lifecycle,
-        // never FlightWeb. Opting out of flight's default "Web" trait keeps
+        // traits: [] — alula-data needs only the container and lifecycle,
+        // never AlulaWeb. Opting out of alula's default "Web" trait keeps
         // Hummingbird, NIO, and the TLS stack out of every consumer that
         // wants a cache or a data source but not an HTTP server.
-        .package(url: "https://github.com/Flight-Framework/flight.git", from: "0.32.0", traits: []),
-        .package(url: "https://github.com/Flight-Framework/swift-changeset.git", from: "0.2.0"),
-        .package(url: "https://github.com/Flight-Framework/hangar.git", from: "0.5.0"),
+        .package(url: "https://github.com/Alula-Framework/alula.git", from: "0.36.0", traits: []),
+        .package(url: "https://github.com/Alula-Framework/swift-changeset.git", from: "0.2.0"),
+        .package(url: "https://github.com/Alula-Framework/hangar.git", from: "0.9.2"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", from: "2.5.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
@@ -92,61 +92,61 @@ let package = Package(
         // MARK: Cache — no driver required
 
         .macro(
-            name: "FlightCacheMacrosImpl",
+            name: "AlulaCacheMacrosImpl",
             dependencies: [
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
                 .product(name: "SwiftDiagnostics", package: "swift-syntax"),
             ],
-            path: "Sources/Cache/FlightCacheMacrosImpl"
+            path: "Sources/Cache/AlulaCacheMacrosImpl"
         ),
         .target(
-            name: "FlightCache",
+            name: "AlulaCache",
             dependencies: [
-                "FlightCacheMacrosImpl",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaCacheMacrosImpl",
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Metrics", package: "swift-metrics"),
                 .product(name: "OrderedCollections", package: "swift-collections"),
             ],
-            path: "Sources/Cache/FlightCache",
+            path: "Sources/Cache/AlulaCache",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
-            name: "FlightCacheTesting",
-            dependencies: ["FlightCache"],
-            path: "Sources/Cache/FlightCacheTesting",
+            name: "AlulaCacheTesting",
+            dependencies: ["AlulaCache"],
+            path: "Sources/Cache/AlulaCacheTesting",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
         // MARK: Data protocols — no driver required
 
         .target(
-            name: "FlightDataCore",
+            name: "AlulaDataCore",
             dependencies: [
-                .product(name: "FlightCore", package: "flight"),
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Changesets", package: "swift-changeset"),
             ],
-            path: "Sources/Data/FlightDataCore",
+            path: "Sources/Data/AlulaDataCore",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
-            name: "FlightDataTesting",
+            name: "AlulaDataTesting",
             dependencies: [
-                "FlightDataCore",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaDataCore",
+                .product(name: "AlulaCore", package: "alula"),
             ],
-            path: "Sources/Data/FlightDataTesting",
+            path: "Sources/Data/AlulaDataTesting",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
         .target(
-            name: "FlightSchedulerPostgres",
+            name: "AlulaSchedulerPostgres",
             dependencies: [
-                "FlightDataCore",
-                "FlightDataPostgres",
-                .product(name: "FlightScheduler", package: "flight"),
+                "AlulaDataCore",
+                "AlulaDataPostgres",
+                .product(name: "AlulaScheduler", package: "alula"),
                 // Gated, like every other Postgres-facing target here: an
                 // ungated dependency makes a trait-free consumer resolve
                 // PostgresNIO, which is exactly what the lean-consumer check
@@ -156,15 +156,15 @@ let package = Package(
                     condition: .when(traits: ["Postgres"])),
                 .product(name: "Logging", package: "swift-log"),
             ],
-            path: "Sources/Scheduler/FlightSchedulerPostgres",
+            path: "Sources/Scheduler/AlulaSchedulerPostgres",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
         .target(
-            name: "FlightPubSubValkey",
+            name: "AlulaPubSubValkey",
             dependencies: [
-                .product(name: "FlightCore", package: "flight"),
-                .product(name: "FlightPubSub", package: "flight"),
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaPubSub", package: "alula"),
                 .product(
                     name: "Valkey", package: "valkey-swift",
                     condition: .when(traits: ["Valkey"])),
@@ -174,262 +174,262 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Sources/PubSub/FlightPubSubValkey",
+            path: "Sources/PubSub/AlulaPubSubValkey",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
         // MARK: Migrations — the core and generator are driver-free
 
-        .target(name: "FlightMigrateCore", path: "Sources/Migrate/FlightMigrateCore", swiftSettings: [.swiftLanguageMode(.v6)]),
+        .target(name: "AlulaMigrateCore", path: "Sources/Migrate/AlulaMigrateCore", swiftSettings: [.swiftLanguageMode(.v6)]),
         .executableTarget(
-            name: "flight-migrate-gen",
-            dependencies: ["FlightMigrateCore"],
-            path: "Sources/Migrate/flight-migrate-gen",
+            name: "alula-migrate-gen",
+            dependencies: ["AlulaMigrateCore"],
+            path: "Sources/Migrate/alula-migrate-gen",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .plugin(
-            name: "FlightMigratePlugin",
+            name: "AlulaMigratePlugin",
             capability: .buildTool(),
-            dependencies: ["flight-migrate-gen"]
+            dependencies: ["alula-migrate-gen"]
         ),
 
         // MARK: Postgres — requires the "Postgres" trait
 
         .target(
-            name: "FlightMigrate",
+            name: "AlulaMigrate",
             dependencies: [
-                "FlightMigrateCore",
+                "AlulaMigrateCore",
                 .product(name: "PostgresNIO", package: "postgres-nio", condition: .when(traits: ["Postgres"])),
                 .product(name: "Logging", package: "swift-log"),
             ],
-            path: "Sources/Migrate/FlightMigrate",
+            path: "Sources/Migrate/AlulaMigrate",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
-            name: "FlightMigrateCLI",
+            name: "AlulaMigrateCLI",
             dependencies: [
-                "FlightMigrate",
-                "FlightMigrateCore",
+                "AlulaMigrate",
+                "AlulaMigrateCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser", condition: .when(traits: ["Postgres"])),
             ],
-            path: "Sources/Migrate/FlightMigrateCLI",
+            path: "Sources/Migrate/AlulaMigrateCLI",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
             name: "ExampleMigrations",
-            dependencies: ["FlightMigrate"],
+            dependencies: ["AlulaMigrate"],
             path: "Sources/Migrate/ExampleMigrations",
             swiftSettings: [.swiftLanguageMode(.v6)],
-            plugins: ["FlightMigratePlugin"]
+            plugins: ["AlulaMigratePlugin"]
         ),
         .executableTarget(
-            name: "flight-migrate-example",
-            dependencies: ["FlightMigrateCLI", "ExampleMigrations"],
-            path: "Sources/Migrate/flight-migrate-example",
+            name: "alula-migrate-example",
+            dependencies: ["AlulaMigrateCLI", "ExampleMigrations"],
+            path: "Sources/Migrate/alula-migrate-example",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
-            name: "FlightDataPostgres",
+            name: "AlulaDataPostgres",
             dependencies: [
-                "FlightDataCore", "FlightMigrate",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaDataCore", "AlulaMigrate",
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Hangar", package: "hangar", condition: .when(traits: ["Postgres"])),
                 .product(name: "PostgresNIO", package: "postgres-nio", condition: .when(traits: ["Postgres"])),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Sources/Data/FlightDataPostgres",
+            path: "Sources/Data/AlulaDataPostgres",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
         // MARK: Valkey — requires the "Valkey" trait
 
         .target(
-            name: "FlightCacheValkey",
+            name: "AlulaCacheValkey",
             dependencies: [
-                "FlightCache",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaCache",
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
                 .product(name: "NIOSSL", package: "swift-nio-ssl", condition: .when(traits: ["Valkey"])),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Metrics", package: "swift-metrics"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Sources/Cache/FlightCacheValkey",
+            path: "Sources/Cache/AlulaCacheValkey",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         // Sessions over Valkey. Depends on the cache adapter for the URL
         // grammar and the driver configuration builder — the second copy of
         // each was already one too many, and the third would be this file.
         .target(
-            name: "FlightSessionsValkey",
+            name: "AlulaSessionsValkey",
             dependencies: [
-                "FlightCacheValkey",
-                .product(name: "FlightCore", package: "flight"),
-                .product(name: "FlightSessions", package: "flight"),
+                "AlulaCacheValkey",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaSessions", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Sources/Sessions/FlightSessionsValkey",
+            path: "Sources/Sessions/AlulaSessionsValkey",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         // Rate limiting over Valkey: GCRA as one EVAL. Depends on the cache
         // adapter for the URL grammar and the driver configuration builder,
         // the same way the session store does.
         .target(
-            name: "FlightRateLimitValkey",
+            name: "AlulaRateLimitValkey",
             dependencies: [
-                "FlightCacheValkey",
-                .product(name: "FlightCore", package: "flight"),
-                .product(name: "FlightRateLimit", package: "flight"),
+                "AlulaCacheValkey",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaRateLimit", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Sources/RateLimit/FlightRateLimitValkey",
+            path: "Sources/RateLimit/AlulaRateLimitValkey",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
-            name: "FlightDataValkey",
+            name: "AlulaDataValkey",
             dependencies: [
-                "FlightDataCore",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaDataCore",
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Sources/Data/FlightDataValkey",
+            path: "Sources/Data/AlulaDataValkey",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
         // MARK: Tests
 
         .testTarget(
-            name: "FlightCacheTests",
+            name: "AlulaCacheTests",
             dependencies: [
-                "FlightCache", "FlightCacheTesting",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaCache", "AlulaCacheTesting",
+                .product(name: "AlulaCore", package: "alula"),
             ],
-            path: "Tests/Cache/FlightCacheTests"
+            path: "Tests/Cache/AlulaCacheTests"
         ),
         .testTarget(
-            name: "FlightCacheMacroTests",
+            name: "AlulaCacheMacroTests",
             dependencies: [
-                "FlightCacheMacrosImpl",
+                "AlulaCacheMacrosImpl",
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftSyntaxMacroExpansion", package: "swift-syntax"),
                 .product(name: "SwiftSyntaxMacrosGenericTestSupport", package: "swift-syntax"),
             ],
-            path: "Tests/Cache/FlightCacheMacroTests"
+            path: "Tests/Cache/AlulaCacheMacroTests"
         ),
         .testTarget(
-            name: "FlightDataCoreTests",
+            name: "AlulaDataCoreTests",
             dependencies: [
-                "FlightDataCore", "FlightDataTesting",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaDataCore", "AlulaDataTesting",
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Tests/Data/FlightDataCoreTests"
+            path: "Tests/Data/AlulaDataCoreTests"
         ),
         .testTarget(
-            name: "FlightMigrateTests",
-            dependencies: ["FlightMigrate", "FlightMigrateCore", "FlightMigrateCLI", "ExampleMigrations"],
-            path: "Tests/Migrate/FlightMigrateTests"
+            name: "AlulaMigrateTests",
+            dependencies: ["AlulaMigrate", "AlulaMigrateCore", "AlulaMigrateCLI", "ExampleMigrations"],
+            path: "Tests/Migrate/AlulaMigrateTests"
         ),
         .testTarget(
-            name: "FlightSchedulerPostgresTests",
+            name: "AlulaSchedulerPostgresTests",
             dependencies: [
-                "FlightSchedulerPostgres",
-                .product(name: "FlightScheduler", package: "flight"),
+                "AlulaSchedulerPostgres",
+                .product(name: "AlulaScheduler", package: "alula"),
             ],
-            path: "Tests/Scheduler/FlightSchedulerPostgresTests",
+            path: "Tests/Scheduler/AlulaSchedulerPostgresTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
-            name: "FlightDataPostgresTests",
+            name: "AlulaDataPostgresTests",
             dependencies: [
-                "FlightDataPostgres", "FlightDataCore", "FlightDataTesting", "FlightMigrate",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaDataPostgres", "AlulaDataCore", "AlulaDataTesting", "AlulaMigrate",
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "PostgresNIO", package: "postgres-nio", condition: .when(traits: ["Postgres"])),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Tests/Data/FlightDataPostgresTests"
+            path: "Tests/Data/AlulaDataPostgresTests"
         ),
         .testTarget(
-            name: "FlightCacheValkeyTests",
+            name: "AlulaCacheValkeyTests",
             dependencies: [
-                "FlightCacheValkey", "FlightCache", "FlightCacheTesting",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaCacheValkey", "AlulaCache", "AlulaCacheTesting",
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
             ],
-            path: "Tests/Cache/FlightCacheValkeyTests"
+            path: "Tests/Cache/AlulaCacheValkeyTests"
         ),
         .testTarget(
-            name: "FlightRateLimitValkeyTests",
+            name: "AlulaRateLimitValkeyTests",
             dependencies: [
-                "FlightRateLimitValkey",
-                .product(name: "FlightCore", package: "flight"),
-                .product(name: "FlightRateLimit", package: "flight"),
+                "AlulaRateLimitValkey",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaRateLimit", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
             ],
-            path: "Tests/RateLimit/FlightRateLimitValkeyTests",
+            path: "Tests/RateLimit/AlulaRateLimitValkeyTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
-            name: "FlightSessionsValkeyTests",
+            name: "AlulaSessionsValkeyTests",
             dependencies: [
-                "FlightSessionsValkey",
-                .product(name: "FlightCore", package: "flight"),
-                .product(name: "FlightSessions", package: "flight"),
-                .product(name: "FlightSessionsTesting", package: "flight"),
+                "AlulaSessionsValkey",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaSessions", package: "alula"),
+                .product(name: "AlulaSessionsTesting", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
             ],
-            path: "Tests/Sessions/FlightSessionsValkeyTests",
+            path: "Tests/Sessions/AlulaSessionsValkeyTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
-            name: "FlightPubSubValkeyTests",
+            name: "AlulaPubSubValkeyTests",
             dependencies: [
-                "FlightPubSubValkey",
-                .product(name: "FlightCore", package: "flight"),
-                .product(name: "FlightPubSub", package: "flight"),
+                "AlulaPubSubValkey",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaPubSub", package: "alula"),
                 .product(
                     name: "Valkey", package: "valkey-swift",
                     condition: .when(traits: ["Valkey"])),
             ],
-            path: "Tests/PubSub/FlightPubSubValkeyTests",
+            path: "Tests/PubSub/AlulaPubSubValkeyTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
-            name: "FlightDataValkeyTests",
+            name: "AlulaDataValkeyTests",
             dependencies: [
-                "FlightDataValkey", "FlightDataCore", "FlightDataTesting",
-                .product(name: "FlightCore", package: "flight"),
+                "AlulaDataValkey", "AlulaDataCore", "AlulaDataTesting",
+                .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
             ],
-            path: "Tests/Data/FlightDataValkeyTests"
+            path: "Tests/Data/AlulaDataValkeyTests"
         ),
     ]
 )
 
 // Documentation tooling only, gated so that consumers never resolve it.
-if ProcessInfo.processInfo.environment["FLIGHT_BUILD_DOCS"] != nil {
+if ProcessInfo.processInfo.environment["ALULA_BUILD_DOCS"] != nil {
     package.dependencies.append(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.3.0")
     )
 }
 
-// Strict warnings, opt-in and scoped to Flight's own targets.
+// Strict warnings, opt-in and scoped to Alula's own targets.
 //
 // `swift build -Xswiftc -warnings-as-errors` cannot be used for this: it
 // applies to every module in the build, dependencies included, so a warning
 // in third-party code that a newer compiler has already fixed fails the
 // build. This setting reaches only the targets declared above.
 //
-//     FLIGHT_STRICT_WARNINGS=1 swift build --enable-all-traits
-if ProcessInfo.processInfo.environment["FLIGHT_STRICT_WARNINGS"] != nil {
+//     ALULA_STRICT_WARNINGS=1 swift build --enable-all-traits
+if ProcessInfo.processInfo.environment["ALULA_STRICT_WARNINGS"] != nil {
     // Plugin targets reject build settings outright.
     for target in package.targets where target.type != .plugin {
         var settings = target.swiftSettings ?? []

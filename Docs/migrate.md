@@ -1,11 +1,11 @@
-# Flight Migrate
+# Alula Migrate
 
 Postgres-first SQL migrations for server-side Swift, with **per-migration transactional
 rollback**.
 
 Postgres supports transactional DDL: `CREATE TABLE`, `ALTER TABLE`, index creation and
 friends can run *inside a transaction* and roll back atomically. Database-agnostic tools
-can't promise that (MySQL and older SQLite auto-commit DDL), so they don't. Flight
+can't promise that (MySQL and older SQLite auto-commit DDL), so they don't. Alula
 Migrate is Postgres-only on purpose and leans into it entirely: every migration runs in
 its own transaction **together with its bookkeeping record**, so a migration that fails
 partway leaves the database byte-for-byte where it started — no half-applied schema, no
@@ -29,7 +29,7 @@ Swift executable.
 
 ## Installation
 
-The migration suite ships inside **flight-data**, behind its `Postgres`
+The migration suite ships inside **alula-data**, behind its `Postgres`
 trait. Without the trait the products are still declared but hard-error at
 build time, because SwiftPM only resolves a gated dependency when some
 enabled trait reaches it — which is what keeps PostgresNIO out of a consumer
@@ -39,7 +39,7 @@ that wanted only the cache.
 // Package.swift
 dependencies: [
     .package(
-        url: "https://github.com/Flight-Framework/flight-data.git",
+        url: "https://github.com/Alula-Framework/alula-data.git",
         from: "0.7.0",
         traits: ["Postgres"]          // required — without it the products refuse to build
     ),
@@ -48,15 +48,15 @@ targets: [
     // 1. A dedicated target for your migration files, with the discovery plugin attached.
     .target(
         name: "Migrations",
-        dependencies: [.product(name: "FlightMigrate", package: "flight-data")],
-        plugins: [.plugin(name: "FlightMigratePlugin", package: "flight-data")]
+        dependencies: [.product(name: "AlulaMigrate", package: "alula-data")],
+        plugins: [.plugin(name: "AlulaMigratePlugin", package: "alula-data")]
     ),
     // 2. Your migrate executable — three lines of code, full CLI.
     .executableTarget(
         name: "migrate",
         dependencies: [
             "Migrations",
-            .product(name: "FlightMigrateCLI", package: "flight-data"),
+            .product(name: "AlulaMigrateCLI", package: "alula-data"),
         ]
     ),
 ]
@@ -64,8 +64,8 @@ targets: [
 
 ```swift
 // Sources/migrate/main.swift
-import FlightMigrate
-import FlightMigrateCLI
+import AlulaMigrate
+import AlulaMigrateCLI
 import Migrations
 
 @main
@@ -88,7 +88,7 @@ Created Sources/Migrations/20260715143022_CreateUsers.swift
 
 ```swift
 // Sources/Migrations/20260715143022_CreateUsers.swift
-import FlightMigrate
+import AlulaMigrate
 
 struct CreateUsers: Migration {
     func up(_ schema: SchemaBuilder) {
@@ -186,7 +186,7 @@ struct AddUsersEmailIndex: Migration {
 ```
 
 **The sharp edge, stated plainly:** an unwrapped migration that fails partway cannot be
-auto-rolled back — there's no transaction to abort. Flight Migrate therefore (a) warns
+auto-rolled back — there's no transaction to abort. Alula Migrate therefore (a) warns
 when an unwrapped migration bundles multiple statements, (b) reports precisely which
 statement failed and that manual intervention may be required (e.g. a failed
 `CREATE INDEX CONCURRENTLY` leaves an `INVALID` index to drop), and (c) still does not
@@ -206,7 +206,7 @@ $ swift run migrate create AddTeams
 $ swift run migrate repair               # re-baseline checksums after a safe edit
 ```
 
-The connection URL comes from `--database-url`, `$FLIGHT_DATABASE_URL`, or
+The connection URL comes from `--database-url`, `$ALULA_DATABASE_URL`, or
 `$DATABASE_URL`:
 
 ```
@@ -220,10 +220,10 @@ verifying certificates — use `verify-full` in production over untrusted networ
 ### As a library
 
 ```swift
-import FlightMigrate
+import AlulaMigrate
 import Migrations
 
-let migrator = FlightMigrator(client: postgresClient, migrations: _allMigrations())
+let migrator = AlulaMigrator(client: postgresClient, migrations: _allMigrations())
 try await migrator.migrate()
 
 // Also available:
@@ -233,7 +233,7 @@ let undone  = try await migrator.rollback(steps: 1)
 let repairs = try await migrator.repair()
 ```
 
-`FlightMigrator.Configuration` exposes the bookkeeping table name, the advisory lock key,
+`AlulaMigrator.Configuration` exposes the bookkeeping table name, the advisory lock key,
 a `Logger`, an `onEvent` callback for progress/metrics, and `failOnUnknownApplied` (see
 below).
 
@@ -250,7 +250,7 @@ is not the same as advisable. Prefer a dedicated deploy step.
 ```
 BEGIN;
   -- every statement of up()/down()
-  INSERT INTO flight_migrations (version, name, checksum) VALUES (...);  -- or DELETE on rollback
+  INSERT INTO alula_migrations (version, name, checksum) VALUES (...);  -- or DELETE on rollback
 COMMIT;
 ```
 
@@ -261,7 +261,7 @@ was not recorded.
 **Bookkeeping.** Created automatically on first run (itself inside a transaction):
 
 ```sql
-CREATE TABLE flight_migrations (
+CREATE TABLE alula_migrations (
     version     BIGINT PRIMARY KEY,      -- the timestamp prefix
     name        TEXT NOT NULL,
     applied_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -271,6 +271,13 @@ CREATE TABLE flight_migrations (
 
 `version` as primary key makes double-application structurally impossible even without
 the advisory lock.
+
+**Databases migrated before the rename to Alula** keep their ledger in
+`flight_migrations`. When the configured table is the default and only the old one
+exists, the next locked run (`migrate`, `rollback`, `repair`) renames it to
+`alula_migrations` under the advisory lock; `status` and the plans read it where it is.
+Nothing else changes: the checksum domain and the lock key are frozen, so recorded
+checksums still verify.
 
 **Checksums (Flyway-style drift detection).** Each migration's source is hashed at build
 time (SHA-256 over the file with line endings normalized, bound to `version_name`) and
@@ -283,7 +290,7 @@ error: migration 20260714120000_CreateUsers has been modified since it was appli
 further changes.
   recorded checksum: 3f9a…
   current checksum:  b1c7…
-If the edit is confirmed-safe (formatting or comments only), run 'flight-migrate repair'
+If the edit is confirmed-safe (formatting or comments only), run 'alula-migrate repair'
 to re-baseline the recorded checksum.
 ```
 
@@ -292,11 +299,11 @@ document like this one stays true.
 
 Because the hash covers source text, a purely cosmetic edit (formatting, comments) also
 trips it — deliberately erring toward halting and asking. After a confirmed-safe edit,
-`flight-migrate repair` re-baselines the recorded checksums. Rollbacks verify checksums
+`alula-migrate repair` re-baselines the recorded checksums. Rollbacks verify checksums
 too: a drifted `down` no longer matches what was applied.
 
 **Concurrency.** The whole run holds `pg_advisory_lock` on a constant key (the ASCII
-bytes `"FLIGHTMG"`; configurable). N instances starting at once serialize; latecomers
+bytes `"FLIGHTMG"`, frozen across the rename; configurable). N instances starting at once serialize; latecomers
 find nothing pending.
 
 **Unknown applied versions.** If the ledger records versions this binary doesn't know
@@ -307,12 +314,12 @@ timestamp than something already applied) are applied in version order, Ecto-sty
 
 ## Testing your migrations
 
-`FlightMigrator` takes any `PostgresClient`, so a test harness can run the real
+`AlulaMigrator` takes any `PostgresClient`, so a test harness can run the real
 migrations against a scratch database or [Testcontainers](https://java.testcontainers.org)-style
 throwaway Postgres:
 
 ```swift
-let migrator = FlightMigrator(
+let migrator = AlulaMigrator(
     client: testClient,
     migrations: _allMigrations(),
     configuration: .init(migrationsTable: "test_ledger")
@@ -327,13 +334,13 @@ $ swift build
 $ swift test                     # unit tests only (fake database)
 
 # Integration tests need a real Postgres:
-$ docker run -d --name flight-migrate-pg -e POSTGRES_PASSWORD=flight \
-    -e POSTGRES_DB=flight_test -p 127.0.0.1:55432:5432 postgres:16-alpine
-$ export FLIGHT_MIGRATE_TEST_DATABASE_URL="postgres://postgres:flight@127.0.0.1:55432/flight_test?sslmode=disable"
+$ docker run -d --name alula-migrate-pg -e POSTGRES_PASSWORD=alula \
+    -e POSTGRES_DB=alula_test -p 127.0.0.1:55432:5432 postgres:16-alpine
+$ export ALULA_MIGRATE_TEST_DATABASE_URL="postgres://postgres:alula@127.0.0.1:55432/alula_test?sslmode=disable"
 $ swift test                     # now includes the integration suite
 ```
 
-The `ExampleMigrations` target and `flight-migrate-example` executable in this package
+The `ExampleMigrations` target and `alula-migrate-example` executable in this package
 are a complete, working consumer setup — the integration suite drives the built example
 binary end to end.
 

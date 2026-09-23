@@ -1,17 +1,17 @@
-# Flight Data Postgres
+# Alula Data Postgres
 
 A pooled connection source, per-operation leases, and a DI-registered
-repository layer — for Postgres, on top of Flight Core, Flight Data Core, and
+repository layer — for Postgres, on top of Alula Core, Alula Data Core, and
 Hangar.
 
 This package is *composition plus stereotypes*, not a from-scratch data
 stack: the driver and wire protocol are **PostgresNIO**, the query layer is
-**Hangar** (`@Entity`), migrations are **Flight Migrate**. What Flight builds
+**Hangar** (`@Entity`), migrations are **Alula Migrate**. What Alula builds
 is the seam between them.
 
 | Product | Contents |
 |---|---|
-| `FlightDataPostgres` | `PostgresDataSource` (the pool, behind Flight Data Core's `DataSource` seam), `PostgresDataModule<Name>`, `PostgresMigrations`, and the Hangar integration — `withRepo`, which leases a connection and hands you a `Repo` bound to it. Re-exports `FlightCore`, `FlightDataCore`, and `Hangar`, so a repository file needs one import. |
+| `AlulaDataPostgres` | `PostgresDataSource` (the pool, behind Alula Data Core's `DataSource` seam), `PostgresDataModule<Name>`, `PostgresMigrations`, and the Hangar integration — `withRepo`, which leases a connection and hands you a `Repo` bound to it. Re-exports `AlulaCore`, `AlulaDataCore`, and `Hangar`, so a repository file needs one import. |
 
 ## Build status
 
@@ -49,7 +49,7 @@ returns it when the closure ends:
 ```swift
 @Repository
 struct UserRepository {
-    // flight:hand-registered — the pool comes from PostgresDataModule, which
+    // alula:hand-registered — the pool comes from PostgresDataModule, which
     // the registration generator cannot see; the marker silences its warning.
     @Inject var pool: PostgresDataSource
 
@@ -79,7 +79,7 @@ The raw connection is available the same way, through
 express — `LISTEN`, `COPY`, server-side cursors.
 
 The module is one generic instantiation per named datasource, reading
-`datasource.<name>.url` / `pool_size` from Flight Config at freeze — a bad
+`datasource.<name>.url` / `pool_size` from Alula Config at freeze — a bad
 URL fails bootstrap, never the first query:
 
 ```yaml
@@ -90,10 +90,10 @@ datasource:
 ```
 
 ```swift
-await Flight.run(configuration: try .load(), modules: [
+await Alula.run(configuration: try .load(), modules: [
     PostgresDataModule<PrimaryDataSource>.self,
     AppModule.self,
-], composedBy: flightComposeModules)
+], composedBy: alulaComposeModules)
 ```
 
 Bootstrap ordering falls out for free: the pool's `run()` dials every
@@ -190,7 +190,7 @@ Three ways out, in the order they are usually worth reaching for:
    same database (`datasource.exports.pool_size: 2`) bounds the damage to
    itself.
 3. **Bound the response.** A write timeout on the streamed body — the same
-   idea as `flight.channels.write-timeout-seconds` — turns an indefinite hold
+   idea as `alula.channels.write-timeout-seconds` — turns an indefinite hold
    into a failed download.
 
 Nothing here is a defect in either layer; it is what the two correct
@@ -199,13 +199,13 @@ a slow phone.
 
 ### Migrations
 
-Not implemented here — Flight Migrate's. This package only wires the
+Not implemented here — Alula Migrate's. This package only wires the
 migrator to the config-resolved datasource URL:
 
 ```swift
 try await PostgresMigrations.migrate(
     configuration: try Configuration.load(),
-    migrations: _allMigrations()      // the FlightMigratePlugin registry
+    migrations: _allMigrations()      // the AlulaMigratePlugin registry
 )
 ```
 
@@ -217,9 +217,9 @@ Unit tests run bare. Integration tests need a real Postgres and are gated on
 one environment variable:
 
 ```
-$ docker run -d --name flight-data-pg -e POSTGRES_PASSWORD=flight \
-    -e POSTGRES_DB=flight_data_test -p 127.0.0.1:55432:5432 postgres:16-alpine
-$ export FLIGHT_POSTGRES_TEST_DATABASE_URL="postgres://postgres:flight@127.0.0.1:55432/flight_data_test?sslmode=disable"
+$ docker run -d --name alula-data-pg -e POSTGRES_PASSWORD=alula \
+    -e POSTGRES_DB=alula_data_test -p 127.0.0.1:55432:5432 postgres:16-alpine
+$ export ALULA_POSTGRES_TEST_DATABASE_URL="postgres://postgres:alula@127.0.0.1:55432/alula_data_test?sslmode=disable"
 $ swift test
 ```
 
@@ -230,12 +230,12 @@ path production uses — so the migrations are exercised on every run.
 
 | # | Delta | Why |
 |---|---|---|
-| P1 | This package owns a small fixed-size pool (`PostgresDataSource`) instead of leasing from `PostgresClient` | The sketch called `PostgresClient.leaseConnection()`, which is **private**; the modern client only lends connections inside async closures. The pool is deliberately thin — eager dial at service start, a `Mutex` free list, checkout that queues up to `checkout_timeout_ms`, and a replacement loop — and everything protocol-level stays PostgresNIO's. `PostgresClient` is still used where its shape fits: the migrate wiring, and the Flight-free binding product. |
+| P1 | This package owns a small fixed-size pool (`PostgresDataSource`) instead of leasing from `PostgresClient` | The sketch called `PostgresClient.leaseConnection()`, which is **private**; the modern client only lends connections inside async closures. The pool is deliberately thin — eager dial at service start, a `Mutex` free list, checkout that queues up to `checkout_timeout_ms`, and a replacement loop — and everything protocol-level stays PostgresNIO's. `PostgresClient` is still used where its shape fits: the migrate wiring, and the Alula-free binding product. |
 | P2 | A connection is leased for **one operation**, not for a request | `withRepo`/`withConnection` bracket the lease. The alternative — a `.scoped` connection held for the whole request — pinned a connection for as long as the scope lived, which for a WebSocket upgrade meant one connection per open browser tab. Per-operation leasing makes the hold as short as the work. |
 | P3 | Transactions are Hangar's `repo.transaction { }`, not an annotation | A `Repo` fixes `inTransaction` at construction, so an ambient repo built before a unit of work always believed it was outside one — it emitted a literal `COMMIT` when nested, ending the enclosing transaction and making writes durable that the caller meant to roll back. Constructing the repo per operation removes the state that could go stale, and Hangar's own bracket tracks depth and emits savepoints. |
 | P4 | A connection returned mid-transaction is dropped, not reused | Every path through `repo.transaction` pairs begin with commit or rollback, but a torn task could still return a connection with a transaction open, and reusing it would leak that state into the next borrower. `DISCARD ALL` is what catches it: Postgres refuses the statement inside a transaction block, and a connection whose reset fails is closed and replaced rather than repooled. This is why `reset_on_release` defaults to on — turning it off gives up this guard as well as the session-state one. (The pool also carries an explicit rollback-on-release path, unreachable since transactions moved into Hangar, which does not tell the pool when it opens one.) |
 | P5 | `reset_on_release` issues `DISCARD ALL` between borrowers | Session state — `SET`, prepared statements, temp tables, `LISTEN` registrations — outlives a lease otherwise, and the next borrower inherits it. On by default; turn it off only for a pool whose callers are known to leave nothing behind. |
-| P6 | One pool per application, and `@Inject var pool: PostgresDataSource` finds it | This row used to describe qualified versus unqualified *registration*, which was container vocabulary and has not been how this works since flight 0.17.0. Composition wires by type: the datasource module provides its pool as a value and anything injecting `PostgresDataSource` receives it, with no name involved. The generic parameter (`<Analytics>`) names the configuration key the pool is built from, not the type it is provided as — so two instantiations are two pools. Both provide `PostgresDataSource`, which the application resolves with `defaultProviders` and `@Inject(from:)` — see `data-core.md`. Requires flight 0.21.0; before it the two collapsed into one binding. |
+| P6 | One pool per application, and `@Inject var pool: PostgresDataSource` finds it | This row used to describe qualified versus unqualified *registration*, which was container vocabulary and has not been how this works since alula 0.17.0. Composition wires by type: the datasource module provides its pool as a value and anything injecting `PostgresDataSource` receives it, with no name involved. The generic parameter (`<Analytics>`) names the configuration key the pool is built from, not the type it is provided as — so two instantiations are two pools. Both provide `PostgresDataSource`, which the application resolves with `defaultProviders` and `@Inject(from:)` — see `data-core.md`. Requires alula 0.21.0; before it the two collapsed into one binding. |
 
 Toolchain/upstream deltas (the `.eq()` spelling, the parameter-pack
 miscompile workaround, the S1–S4 dialect adaptations) are recorded in

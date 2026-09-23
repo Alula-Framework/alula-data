@@ -1,10 +1,10 @@
-# Flight Cache Valkey
+# Alula Cache Valkey
 
-The Valkey/Redis-backed adapter for [Flight Cache](cache.md): namespaces as
+The Valkey/Redis-backed adapter for [Alula Cache](cache.md): namespaces as
 key prefixes, TTL as native expiry. Required for multi-instance deployments,
 where an in-memory cache gives each instance its own inconsistent copy.
 
-Deliberately **not** built on [Flight Data Valkey](data-valkey.md): a cache
+Deliberately **not** built on [Alula Data Valkey](data-valkey.md): a cache
 adapter needs `GET`, `SET`, `UNLINK`, and expiry — not repositories,
 `Scope`-bound checkout, or `DataSource` conformance. Shared *library*
 dependency (valkey-swift), no dependency between the two targets. And unlike
@@ -16,12 +16,12 @@ holds a `ValkeyClient` — the driver's own pool, already a ServiceLifecycle
 |---|---|
 | `ValkeyCache` | Fail-open `Cache` over `ValkeyClient` — every error is a logged, counted miss or no-op; consecutive-failure breaker with a half-open probe, fed only by failures that actually indicate store ill-health (CV2) |
 | `ValkeyCacheSettings` / `ValkeyCacheURL` | `cache.valkey.*` config (its own root — caching is not adopting Valkey as a data store); both timeout phases (CV1), pool sizing; `valkey://`/`redis://` exact synonyms, TLS variants, auth, database |
-| `FlightCacheValkeyModule` | Provides `cache: any Cache`, which `FlightCacheModule` takes as its adapter, and runs the client pool as its service |
+| `AlulaCacheValkeyModule` | Provides `cache: any Cache`, which `AlulaCacheModule` takes as its adapter, and runs the client pool as its service |
 
 ## Keys, and sharing one Valkey
 
-Keys are stored as `flight-cache:` + `CacheKey.storageKey`
-(`flight-cache:prices:123:eu`) — recognizable and greppable in a store that may
+Keys are stored as `alula-cache:` + `CacheKey.storageKey`
+(`alula-cache:prices:123:eu`) — recognizable and greppable in a store that may
 hold non-cache data. Namespace eviction is `SCAN MATCH <prefix>* + UNLINK` in
 batches: O(keys) and non-atomic, deliberately.
 
@@ -50,12 +50,12 @@ breaker correctly stays closed, because the pool's breaker owns that case.
 ## Using it
 
 ```swift
-try await Flight.run(
+try await Alula.run(
     configuration: .load(),
-    modules: [FlightCacheValkeyModule.self, FlightCacheModule.self],
-    composedBy: flightComposeModules)
-// The composition root hands the Valkey store to FlightCacheModule as its
-// adapter — the direction the inversion established. `flight new` writes the
+    modules: [AlulaCacheValkeyModule.self, AlulaCacheModule.self],
+    composedBy: alulaComposeModules)
+// The composition root hands the Valkey store to AlulaCacheModule as its
+// adapter — the direction the inversion established. `alula new` writes the
 // `composedBy:` argument.
 ```
 
@@ -80,10 +80,10 @@ Unit tests need nothing. Integration tests are gated per server and run the
 same code against every server you configure:
 
 ```
-$ docker run -d --name flight-cache-valkey -p 127.0.0.1:56379:6379 valkey/valkey:8-alpine
-$ docker run -d --name flight-cache-redis  -p 127.0.0.1:56380:6379 redis:7-alpine
-$ export FLIGHT_VALKEY_TEST_URL="valkey://127.0.0.1:56379"
-$ export FLIGHT_REDIS_TEST_URL="redis://127.0.0.1:56380"
+$ docker run -d --name alula-cache-valkey -p 127.0.0.1:56379:6379 valkey/valkey:8-alpine
+$ docker run -d --name alula-cache-redis  -p 127.0.0.1:56380:6379 redis:7-alpine
+$ export ALULA_VALKEY_TEST_URL="valkey://127.0.0.1:56379"
+$ export ALULA_REDIS_TEST_URL="redis://127.0.0.1:56380"
 $ swift test
 ```
 
@@ -124,7 +124,7 @@ The suites `FLUSHDB` between tests — point them at throwaway servers only.
   which valkey-swift does not expose (`ValkeyConnectionFactory`'s
   `customHandler` hook is `package`-scoped), so the breaker cannot trip
   before ~20 s. `min_connections: 1` moves that cost to startup for a
-  server that is already unreachable, but a mid-flight blackhole can still
+  server that is already unreachable, but a mid-alula blackhole can still
   stall calls. The fix belongs upstream — a `connectTimeout` on
   `ValkeyConnectionConfiguration` — not in a per-call guard here.
 

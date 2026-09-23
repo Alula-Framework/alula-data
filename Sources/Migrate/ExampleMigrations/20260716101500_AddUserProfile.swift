@@ -1,4 +1,4 @@
-import FlightMigrate
+import AlulaMigrate
 
 // ALTER TABLE actions plus a raw-SQL data backfill in the same migration — the
 // add-nullable → backfill → set-default → set-not-null pattern.

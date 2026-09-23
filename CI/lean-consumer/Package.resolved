@@ -2,9 +2,9 @@
   "originHash" : "600fe359f3ce9de1ca63488d099bdc5464e7ad9367dce3699ac7c6b6cbfe9198",
   "pins" : [
     {
-      "identity" : "flight",
+      "identity" : "alula",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Flight-Framework/flight.git",
+      "location" : "https://github.com/Alula-Framework/alula.git",
       "state" : {
         "revision" : "a28fa65b8f555af9c4f33371e025fcf3135ee54f",
         "version" : "0.32.0"
@@ -22,7 +22,7 @@
     {
       "identity" : "swift-changeset",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Flight-Framework/swift-changeset.git",
+      "location" : "https://github.com/Alula-Framework/swift-changeset.git",
       "state" : {
         "revision" : "978c9b504072760bc002f793acd041930d628739",
         "version" : "0.2.0"

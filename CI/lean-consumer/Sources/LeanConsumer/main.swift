@@ -1,4 +1,4 @@
-import FlightCache
+import AlulaCache
 
 // Existing is the whole test: what matters is what Package.resolved holds.
 @main

@@ -5,11 +5,11 @@
 #error("""
     ExampleMigrations requires the "Postgres" trait.
 
-    Consuming flight-data:
-        .package(url: "https://github.com/Flight-Framework/flight-data.git", \
+    Consuming alula-data:
+        .package(url: "https://github.com/Alula-Framework/alula-data.git", \
                  from: "0.1.0", traits: ["Postgres"])
 
-    Building flight-data itself:
+    Building alula-data itself:
         swift build --enable-all-traits
     """)
 #endif

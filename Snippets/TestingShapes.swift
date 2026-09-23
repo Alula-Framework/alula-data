@@ -1,12 +1,12 @@
-// The flight-data half of the API shapes Docs cover, compiled by the build.
+// The alula-data half of the API shapes Docs cover, compiled by the build.
 //
 // A page that shows an API is a claim about it. Compiling the shapes makes a
 // signature change break the build rather than only mislead a reader.
-import FlightCache
-import FlightCacheTesting
-import FlightCore
-import FlightDataCore
-import FlightDataTesting
+import AlulaCache
+import AlulaCacheTesting
+import AlulaCore
+import AlulaDataCore
+import AlulaDataTesting
 import Foundation
 
 func dataTestingShapes() async {

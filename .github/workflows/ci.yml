@@ -5,27 +5,27 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # flight calls this so a change there is tested against its largest
-  # consumer on the pull request that causes it. flight 0.19.0 added an
+  # alula calls this so a change there is tested against its largest
+  # consumer on the pull request that causes it. alula 0.19.0 added an
   # associated value to `ConfigError.missingKey`; a default argument does not
   # apply to pattern matching, so this package's test target stopped
   # compiling — and nothing noticed, because nothing built it.
   workflow_call:
     inputs:
-      flight_ref:
-        description: "The flight commit to build this package against."
+      alula_ref:
+        description: "The alula commit to build this package against."
         type: string
         default: ""
   workflow_dispatch:
 
 # The literal prefix is load-bearing. `github.workflow` and `github.ref`
 # resolve to the *caller's* values inside a reusable workflow, so without it
-# this group is identical to the one flight's own run already occupies when it
+# this group is identical to the one alula's own run already occupies when it
 # calls us — and with cancel-in-progress, the called job can never be
-# scheduled. That is why the `flight-data builds against this commit` job has
-# never once appeared in a flight CI run.
+# scheduled. That is why the `alula-data builds against this commit` job has
+# never once appeared in an alula CI run.
 concurrency:
-  group: flight-data-${{ github.workflow }}-${{ github.ref }}
+  group: alula-data-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: flight-data
+        working-directory: alula-data
     strategy:
       fail-fast: false
       matrix:
@@ -51,8 +51,8 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: flight
-          POSTGRES_DB: flight_test
+          POSTGRES_PASSWORD: alula
+          POSTGRES_DB: alula_test
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
@@ -63,16 +63,16 @@ jobs:
           --health-timeout 5s --health-retries 5
 
     steps:
-      # flight, hangar and swift-changeset are resolved by URL now, and
+      # alula, hangar and swift-changeset are resolved by URL now, and
       # those repositories are private — so git needs the token. The sibling
       # checkouts this replaced existed only for the path dependencies that
       # v0.1.0 removed. This step disappears when the repositories go public.
       # The official Swift images are slim: no python3, which the manifest
-      # repoint below runs on. flight-cli's workflow has installed it since it
+      # repoint below runs on. alula-cli's workflow has installed it since it
       # was written; this one never did, and the step died with exit 127 the
       # first time it was ever reached.
       # `working-directory` overridden on both pre-checkout steps: the job
-      # default is `flight-data/`, and that directory does not exist until
+      # default is `alula-data/`, and that directory does not exist until
       # the checkout below creates it. Without this the very first step
       # failed in under a second with a missing-directory error, before
       # anything it was supposed to test had run.
@@ -91,44 +91,44 @@ jobs:
           git config --global --add safe.directory '*'
 
       # Inside a reusable workflow the `github` context is the *caller's*, so a
-      # bare checkout pulls flight and these steps run against the wrong
+      # bare checkout pulls alula and these steps run against the wrong
       # package — which is exactly how the called job came to report "no target
-      # named 'FlightDataCore'". Name the repository, and pick the ref: our own
-      # commit on our own runs, main when flight drives.
+      # named 'AlulaDataCore'". Name the repository, and pick the ref: our own
+      # commit on our own runs, main when alula drives.
       - uses: actions/checkout@v4
         with:
-          repository: Flight-Framework/flight-data
-          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+          repository: Alula-Framework/alula-data
+          ref: ${{ inputs.alula_ref != '' && 'main' || github.sha }}
           # SwiftPM takes a package's identity from its directory name, and
           # inside a reusable workflow the workspace is named after the
-          # *caller* — `/__w/flight/flight`. Checked out at the root, this
-          # package therefore claimed the identity `flight`, collided with
-          # its own dependency on flight, and failed with
-          #   product 'FlightScheduler' required by package 'flight'
-          #   target 'FlightSchedulerPostgresTests' not found in package 'flight'
-          # which reads like flight dropped a product. Name the directory.
-          path: flight-data
+          # *caller* — `/__w/alula/alula`. Checked out at the root, this
+          # package therefore claimed the identity `alula`, collided with
+          # its own dependency on alula, and failed with
+          #   product 'AlulaScheduler' required by package 'alula'
+          #   target 'AlulaSchedulerPostgresTests' not found in package 'alula'
+          # which reads like alula dropped a product. Name the directory.
+          path: alula-data
 
-      # Only when called with a ref. A standalone run resolves flight by URL,
+      # Only when called with a ref. A standalone run resolves alula by URL,
       # exactly as a consumer does; a called run must test the commit under
       # review instead, which is the difference between this wiring and one
       # that proves nothing.
-      - name: Check out the flight commit under review
-        if: inputs.flight_ref != ''
+      - name: Check out the alula commit under review
+        if: inputs.alula_ref != ''
         uses: actions/checkout@v4
         with:
-          repository: Flight-Framework/flight
-          ref: ${{ inputs.flight_ref }}
-          # Named `flight`, not `.flight-under-review`: a path dependency's
+          repository: Alula-Framework/alula
+          ref: ${{ inputs.alula_ref }}
+          # Named `alula`, not `.alula-under-review`: a path dependency's
           # identity is its last path component, so the tidier name would
-          # have resolved to `flight-under-review` and matched none of the
-          # `package: "flight"` references in the targets below. The same
+          # have resolved to `alula-under-review` and matched none of the
+          # `package: "alula"` references in the targets below. The same
           # rule that broke the checkout above, one line further on.
-          path: flight
+          path: alula
           token: ${{ secrets.SWIFTFLIGHT_CI_TOKEN }}
 
       - name: Point the manifest at it
-        if: inputs.flight_ref != ''
+        if: inputs.alula_ref != ''
         run: |
           python3 - <<'PY'
           import re, pathlib
@@ -137,23 +137,23 @@ jobs:
           def to_path(match):
               tail = match.group(1)
               traits = re.search(r'(traits:\s*\[[^\]]*\])', tail)
-              args = 'path: "../flight"'
+              args = 'path: "../alula"'
               if traits:
                   args += f", {traits.group(1)}"
               return f".package({args})"
           text = re.sub(
-              r'\.package\(\s*url:\s*"https://github\.com/Flight-Framework/flight\.git"\s*,([^)]*)\)',
+              r'\.package\(\s*url:\s*"https://github\.com/Alula-Framework/alula\.git"\s*,([^)]*)\)',
               to_path, text)
           manifest.write_text(text)
           PY
-          grep -n 'path: "../flight"' Package.swift || {
-            echo "::error::manifest rewrite did not take — the flight dependency was not repointed"
+          grep -n 'path: "../alula"' Package.swift || {
+            echo "::error::manifest rewrite did not take — the alula dependency was not repointed"
             exit 1
           }
 
-      - name: Build (Flight's own warnings are errors)
+      - name: Build (Alula's own warnings are errors)
         env:
-          FLIGHT_STRICT_WARNINGS: "1"
+          ALULA_STRICT_WARNINGS: "1"
         run: swift build --enable-all-traits
 
       # Fails rather than silently skipping: an unset variable here would
@@ -163,20 +163,20 @@ jobs:
         # error under sh, which fails the step for the wrong reason.
         run: |
           fail=0
-          [ -n "$FLIGHT_POSTGRES_TEST_DATABASE_URL" ] || { echo "::error::FLIGHT_POSTGRES_TEST_DATABASE_URL is unset"; fail=1; }
-          [ -n "$FLIGHT_MIGRATE_TEST_DATABASE_URL" ] || { echo "::error::FLIGHT_MIGRATE_TEST_DATABASE_URL is unset"; fail=1; }
-          [ -n "$FLIGHT_VALKEY_TEST_URL" ] || { echo "::error::FLIGHT_VALKEY_TEST_URL is unset"; fail=1; }
+          [ -n "$ALULA_POSTGRES_TEST_DATABASE_URL" ] || { echo "::error::ALULA_POSTGRES_TEST_DATABASE_URL is unset"; fail=1; }
+          [ -n "$ALULA_MIGRATE_TEST_DATABASE_URL" ] || { echo "::error::ALULA_MIGRATE_TEST_DATABASE_URL is unset"; fail=1; }
+          [ -n "$ALULA_VALKEY_TEST_URL" ] || { echo "::error::ALULA_VALKEY_TEST_URL is unset"; fail=1; }
           [ "$fail" = "0" ] || { echo "::error::integration tests would skip"; exit 1; }
         env:
-          FLIGHT_POSTGRES_TEST_DATABASE_URL: postgres://postgres:flight@postgres:5432/flight_test
-          FLIGHT_MIGRATE_TEST_DATABASE_URL: postgres://postgres:flight@postgres:5432/flight_test
-          FLIGHT_VALKEY_TEST_URL: redis://valkey:6379
+          ALULA_POSTGRES_TEST_DATABASE_URL: postgres://postgres:alula@postgres:5432/alula_test
+          ALULA_MIGRATE_TEST_DATABASE_URL: postgres://postgres:alula@postgres:5432/alula_test
+          ALULA_VALKEY_TEST_URL: redis://valkey:6379
 
       - name: Test
         env:
-          FLIGHT_POSTGRES_TEST_DATABASE_URL: postgres://postgres:flight@postgres:5432/flight_test
-          FLIGHT_MIGRATE_TEST_DATABASE_URL: postgres://postgres:flight@postgres:5432/flight_test
-          FLIGHT_VALKEY_TEST_URL: redis://valkey:6379
+          ALULA_POSTGRES_TEST_DATABASE_URL: postgres://postgres:alula@postgres:5432/alula_test
+          ALULA_MIGRATE_TEST_DATABASE_URL: postgres://postgres:alula@postgres:5432/alula_test
+          ALULA_VALKEY_TEST_URL: redis://valkey:6379
         run: ./CI/run-tests.sh
 
       # The lean configuration is a supported consumption mode, so it is
@@ -196,7 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: flight-data
+        working-directory: alula-data
     continue-on-error: true
     container: swift:6.3.3
 
@@ -208,8 +208,8 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: flight
-          POSTGRES_DB: flight_test
+          POSTGRES_PASSWORD: alula
+          POSTGRES_DB: alula_test
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
@@ -222,17 +222,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Flight-Framework/flight-data
-          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+          repository: Alula-Framework/alula-data
+          ref: ${{ inputs.alula_ref != '' && 'main' || github.sha }}
           # SwiftPM takes a package's identity from its directory name, and
           # inside a reusable workflow the workspace is named after the
-          # *caller* — `/__w/flight/flight`. Checked out at the root, this
-          # package therefore claimed the identity `flight`, collided with
-          # its own dependency on flight, and failed with
-          #   product 'FlightScheduler' required by package 'flight'
-          #   target 'FlightSchedulerPostgresTests' not found in package 'flight'
-          # which reads like flight dropped a product. Name the directory.
-          path: flight-data
+          # *caller* — `/__w/alula/alula`. Checked out at the root, this
+          # package therefore claimed the identity `alula`, collided with
+          # its own dependency on alula, and failed with
+          #   product 'AlulaScheduler' required by package 'alula'
+          #   target 'AlulaSchedulerPostgresTests' not found in package 'alula'
+          # which reads like alula dropped a product. Name the directory.
+          path: alula-data
 
 
       - name: Check formatting
@@ -243,22 +243,22 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: flight-data
+        working-directory: alula-data
     container: swift:6.3.3
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Flight-Framework/flight-data
-          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+          repository: Alula-Framework/alula-data
+          ref: ${{ inputs.alula_ref != '' && 'main' || github.sha }}
           # SwiftPM takes a package's identity from its directory name, and
           # inside a reusable workflow the workspace is named after the
-          # *caller* — `/__w/flight/flight`. Checked out at the root, this
-          # package therefore claimed the identity `flight`, collided with
-          # its own dependency on flight, and failed with
-          #   product 'FlightScheduler' required by package 'flight'
-          #   target 'FlightSchedulerPostgresTests' not found in package 'flight'
-          # which reads like flight dropped a product. Name the directory.
-          path: flight-data
+          # *caller* — `/__w/alula/alula`. Checked out at the root, this
+          # package therefore claimed the identity `alula`, collided with
+          # its own dependency on alula, and failed with
+          #   product 'AlulaScheduler' required by package 'alula'
+          #   target 'AlulaSchedulerPostgresTests' not found in package 'alula'
+          # which reads like alula dropped a product. Name the directory.
+          path: alula-data
 
       # Every module with a .docc catalogue, each with --warnings-as-errors:
       # an unresolved symbol link, a doc comment naming a renamed parameter,
@@ -267,16 +267,16 @@ jobs:
       # that is wrong, which is worse than none.
       - name: Generate documentation
         env:
-          FLIGHT_BUILD_DOCS: "1"
+          ALULA_BUILD_DOCS: "1"
         run: |
           # The plugin *moves* its archive to --output-path, so the parent
           # has to exist first.
           mkdir -p ./docs
-          for target in FlightDataCore FlightCache FlightDataPostgres \
-                        FlightDataValkey FlightCacheValkey FlightDataTesting \
-                        FlightMigrate FlightMigrateCore \
-                        FlightSchedulerPostgres FlightPubSubValkey \
-                        FlightSessionsValkey FlightRateLimitValkey; do
+          for target in AlulaDataCore AlulaCache AlulaDataPostgres \
+                        AlulaDataValkey AlulaCacheValkey AlulaDataTesting \
+                        AlulaMigrate AlulaMigrateCore \
+                        AlulaSchedulerPostgres AlulaPubSubValkey \
+                        AlulaSessionsValkey AlulaRateLimitValkey; do
             echo "::group::$target"
             swift package --enable-all-traits \
               --allow-writing-to-directory "./docs/$target" \
@@ -290,7 +290,7 @@ jobs:
     runs-on: macos-26
     defaults:
       run:
-        working-directory: flight-data
+        working-directory: alula-data
     # Advisory, and the reason is upstream rather than here.
     #
     # apple/swift-configuration 1.2.0 — the latest release — does not
@@ -307,17 +307,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Flight-Framework/flight-data
-          ref: ${{ inputs.flight_ref != '' && 'main' || github.sha }}
+          repository: Alula-Framework/alula-data
+          ref: ${{ inputs.alula_ref != '' && 'main' || github.sha }}
           # SwiftPM takes a package's identity from its directory name, and
           # inside a reusable workflow the workspace is named after the
-          # *caller* — `/__w/flight/flight`. Checked out at the root, this
-          # package therefore claimed the identity `flight`, collided with
-          # its own dependency on flight, and failed with
-          #   product 'FlightScheduler' required by package 'flight'
-          #   target 'FlightSchedulerPostgresTests' not found in package 'flight'
-          # which reads like flight dropped a product. Name the directory.
-          path: flight-data
+          # *caller* — `/__w/alula/alula`. Checked out at the root, this
+          # package therefore claimed the identity `alula`, collided with
+          # its own dependency on alula, and failed with
+          #   product 'AlulaScheduler' required by package 'alula'
+          #   target 'AlulaSchedulerPostgresTests' not found in package 'alula'
+          # which reads like alula dropped a product. Name the directory.
+          path: alula-data
 
       # swiftly rather than swift-actions/setup-swift: this package declares
       # swift-tools-version 6.3, and setup-swift only indexes up to 6.2.
@@ -342,27 +342,27 @@ jobs:
       - name: Build
         run: swift build --enable-all-traits
 
-  # The starter templates are built against *this* commit, in flight-cli's own
+  # The starter templates are built against *this* commit, in alula-cli's own
   # workflow. Its `workflow_call` trigger exists for this, and until now
   # nothing called it: five renamed or removed APIs reached the templates
-  # unnoticed, and `flight new` emitted a project that did not compile against
+  # unnoticed, and `alula new` emitted a project that did not compile against
   # the versions it resolved. A breaking change here should fail on the pull
   # request that causes it, not in a new user's first ten minutes.
   templates:
     name: Starter templates
     # Only on our own runs. `github.sha` inside a reusable workflow is the
-    # *caller's*, so when flight drives this workflow the line below passed
-    # flight's commit as `flight_data_ref` and flight-cli tried to check out
-    # flight-data at it:
+    # *caller's*, so when alula drives this workflow the line below passed
+    # alula's commit as `alula_data_ref` and alula-cli tried to check out
+    # alula-data at it:
     #
     #     fatal: remote error: upload-pack: not our ref 9bee9796…
     #
     # There is nothing to pass instead — this workflow cannot learn its own
-    # sha when it is called — and nothing is lost by standing down: flight's
-    # CI calls flight-cli directly, with the refs that are correct there.
-    if: inputs.flight_ref == ''
-    uses: Flight-Framework/flight-cli/.github/workflows/ci.yml@main
+    # sha when it is called — and nothing is lost by standing down: alula's
+    # CI calls alula-cli directly, with the refs that are correct there.
+    if: inputs.alula_ref == ''
+    uses: Alula-Framework/alula-cli/.github/workflows/ci.yml@main
     with:
-      caller: flight-data
-      flight_data_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      caller: alula-data
+      alula_data_ref: ${{ github.event.pull_request.head.sha || github.sha }}
     secrets: inherit

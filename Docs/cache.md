@@ -1,9 +1,9 @@
-# Flight Cache
+# Alula Cache
 
-Declarative caching for Flight: annotate a method and its results are cached
+Declarative caching for Alula: annotate a method and its results are cached
 and served from cache on subsequent calls with the same inputs — Spring's
 `@Cacheable`/`@CacheEvict`/`@CachePut` analogue with **compile-time expansion
-in place of runtime proxies**, on top of Flight Core.
+in place of runtime proxies**, on top of Alula Core.
 
 | Piece | Contents |
 |---|---|
@@ -11,13 +11,13 @@ in place of runtime proxies**, on top of Flight Core.
 | `@Cacheable` / `@CacheEvict` / `@CachePut` | Body macros expanding INTO the method body — no proxy, so self-invocation caches (the Spring footgun that cannot occur here) |
 | `CacheKeyContributing` | Explicit, compiler-checked key derivation; primitives ship, custom types conform deliberately |
 | `CacheCodec` / `JSONCacheCodec` | Codable values, JSON by default, decode failure = miss |
-| `CacheRuntime` + `FlightCaches` | The runtime the expansions call, reached through a `FlightTransactions`-style seam (task-local override → installed runtime → warn-once no-op) |
+| `CacheRuntime` + `AlulaCaches` | The runtime the expansions call, reached through a `AlulaTransactions`-style seam (task-local override → installed runtime → warn-once no-op) |
 | `SingleFlight` | Local stampede protection — leader computes inline, waiters receive the encoded bytes, errors propagate, cancellation hands leadership over |
 | `InMemoryCache` | Actor-guarded LRU with TTL, bounded by default; hit, insert and evict are all O(1) |
-| `FlightCacheModule` | Takes an optional `adapter: (any Cache)?` — the adapter module provides it, else in-memory |
-| `FlightCacheTesting` | `RecordingCache` — recording, seedable, `misbehave()`-able store for consumer tests |
+| `AlulaCacheModule` | Takes an optional `adapter: (any Cache)?` — the adapter module provides it, else in-memory |
+| `AlulaCacheTesting` | `RecordingCache` — recording, seedable, `misbehave()`-able store for consumer tests |
 
-The Valkey/Redis adapter is [`FlightCacheValkey`](cache-valkey.md), a target
+The Valkey/Redis adapter is [`AlulaCacheValkey`](cache-valkey.md), a target
 in **this** package behind the `Valkey` trait. It was a separate package
 once, and this page said so long after it stopped being true; the traits are
 what make co-location free — a consumer that does not enable `Valkey`
@@ -26,13 +26,13 @@ resolves none of its dependencies.
 ## Using it
 
 ```swift
-try await Flight.run(
+try await Alula.run(
     configuration: .load(),
     modules: [
-        FlightCacheModule.self,          // in-memory by default
-        // FlightCacheValkeyModule.self, // …or the Valkey/Redis store
+        AlulaCacheModule.self,          // in-memory by default
+        // AlulaCacheValkeyModule.self, // …or the Valkey/Redis store
     ],
-    composedBy: flightComposeModules)
+    composedBy: alulaComposeModules)
 ```
 
 ```swift
@@ -88,9 +88,9 @@ package's intent, in its spirit.
   failure semantics propagate waiter errors as `any Error`; a
   `throws(SpecificError)` method could not re-throw them. Diagnosed, not
   silently mis-expanded.
-- **C3 — `FlightCaches` layers a task-local override over the installed
+- **C3 — `AlulaCaches` layers a task-local override over the installed
   global.** The design named only the seam; tests need scoped runtimes
-  (`FlightCaches.$override.withValue`), and a process-global alone would
+  (`AlulaCaches.$override.withValue`), and a process-global alone would
   make parallel test isolation impossible. Order: override → installed →
   warn-once no-op.
 - **C4 — the empty key segment escapes to `\e`.** The plain escaping rule
@@ -122,7 +122,7 @@ package's intent, in its spirit.
 Worth knowing before sizing anything: an in-memory hit is not free, and not
 because of the store. Values cross the `Cache` seam as `Data`, so every hit
 pays a JSON decode, and the decoder is constructed per call. That is
-deliberate — waiters in a single flight receive encoded bytes, and the
+deliberate — waiters in a single alula receive encoded bytes, and the
 in-memory adapter behaving exactly like the Valkey one is what makes swapping
 them a configuration change rather than a behaviour change — but it means the
 in-memory adapter is a *cache*, not a memoization table. Caching a value that

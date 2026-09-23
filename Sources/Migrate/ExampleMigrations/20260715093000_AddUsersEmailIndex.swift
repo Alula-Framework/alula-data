@@ -1,4 +1,4 @@
-import FlightMigrate
+import AlulaMigrate
 
 // The design document's unwrapped example: CREATE INDEX CONCURRENTLY cannot
 // run inside a transaction block, so this migration opts out of the wrapper. One

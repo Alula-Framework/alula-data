@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-09-23
+
+Requires alula 0.36.0. flight-data is now **alula-data**, following the
+framework's rename (alula D45).
+
+### Changed
+
+- **Breaking: every brand spelling is renamed.** Modules, types, products
+  and the package become `alula-data`, `AlulaMigrate`, `AlulaDataPostgres`,
+  `AlulaSessionsValkey` and so on. The tools become `alula-migrate` and
+  `alula-migrate-gen`, and the plugin is `AlulaMigratePlugin`.
+- **The default migrations ledger is `alula_migrations`, and an existing
+  `flight_migrations` ledger is adopted.** Adoption happens when the
+  configured table is the default, it doesn't exist, and `flight_migrations`
+  does:
+  - `migrate`, `rollback` and `repair` rename the old table in place while
+    holding the advisory lock;
+  - `status` and the plans read it where it is.
+
+  A custom `migrationsTable` is never touched.
+- **What stays the same across the rename.** The checksum domain stays
+  `flight-migrate:v1`, and the advisory-lock key stays the bytes of
+  `FLIGHTMG`. Recorded checksums still verify, and a 0.10 deploy and a
+  0.11 deploy still serialize on the same lock.
+- **Breaking: the Valkey key prefixes are `alula-session:`,
+  `alula-session-owner:`, `alula-token:`, `alula-rate-limit:` and
+  `alula-cache:`.** Existing sessions, one-time tokens and rate-limit windows
+  are left behind, so everyone signs in again once.
+- **Breaking: the scheduler's default lease table is `alula_job_leases`.**
+  Create it in a migration, or pass `table: "flight_job_leases"` to keep the
+  old one.
+
 ## [0.10.0] - 2026-09-22
 
 Requires flight 0.32.0.

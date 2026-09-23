@@ -1,4 +1,4 @@
-import FlightMigrate
+import AlulaMigrate
 
 // The design document's canonical example.
 struct CreateUsers: Migration {

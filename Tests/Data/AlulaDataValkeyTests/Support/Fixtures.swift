@@ -1,0 +1,99 @@
+import Foundation
+import AlulaDataValkey
+
+// MARK: - Model (changeset design)
+
+/// The design doc's example entity, as a hand-conformed `TableModel` —
+/// exactly the metadata the changeset seam needs, nothing more (Alula Data
+/// Core's TableModel doc: hand-conformance is a handful of lines).
+struct Session: TableModel, Equatable {
+    var id: String
+    var userID: Int
+    var ipAddress: String?
+    var loginCount: Int
+    var active: Bool = true
+
+    static let tableName = "session"
+
+    static let columns: [TableColumn<Session>] = [
+        TableColumn("id", \Session.id, primaryKey: true),
+        TableColumn("user_id", \Session.userID),
+        TableColumn("ip_address", \Session.ipAddress),
+        TableColumn("login_count", \Session.loginCount),
+        TableColumn("active", \Session.active),
+    ]
+}
+
+/// A two-column primary key, for the key-encoding collision tests.
+struct TwoPartKeySession: TableModel, Equatable {
+    var left: String
+    var right: String
+
+    static let tableName = "two_part"
+
+    static let columns: [TableColumn<TwoPartKeySession>] = [
+        TableColumn("left", \TwoPartKeySession.left, primaryKey: true),
+        TableColumn("right", \TwoPartKeySession.right, primaryKey: true),
+    ]
+}
+
+/// No primary-key column at all — the misuse that used to trap.
+struct KeylessSession: TableModel, Equatable {
+    var value: String
+
+    static let tableName = "keyless"
+
+    static let columns: [TableColumn<KeylessSession>] = [
+        TableColumn("value", \KeylessSession.value)
+    ]
+}
+
+// MARK: - Repository
+
+/// The repository, executable: typed commands against a connection leased
+/// per operation, resolved through the real `@Repository`/`@Inject` macro
+/// path. A singleton holding the pool — it used to be `.scoped`, holding one
+/// connection for a whole request.
+@Repository
+struct SessionRepository {
+    @Inject var pool: ValkeyDataSource
+
+    func store(_ session: Session, ttl: Duration) async throws {
+        try await pool.withConnection { valkey in
+            let key = ValkeyKey("session:\(session.id)")
+            try await valkey.hset(
+                key,
+                data: [
+                    .init(field: "user_id", value: "\(session.userID)"),
+                    .init(field: "login_count", value: "\(session.loginCount)"),
+                    .init(field: "active", value: session.active ? "1" : "0"),
+                ])
+            try await valkey.expire(key, after: ttl)
+        }
+    }
+
+    func find(_ id: String) async throws -> [String: String] {
+        try await pool.withConnection { valkey in
+            var fields: [String: String] = [:]
+            for entry in try await valkey.hgetall(ValkeyKey("session:\(id)")) {
+                fields[try entry.key.decode(as: String.self)] =
+                    try entry.value.decode(as: String.self)
+            }
+            return fields
+        }
+    }
+
+    func recordScore(_ member: String, _ score: Double) async throws {
+        try await pool.withConnection { valkey in
+            try await valkey.zadd("leaderboard", data: [.init(score: score, member: member)])
+        }
+    }
+
+    func leaderboard(top n: Int) async throws -> [(String, Double)] {
+        try await pool.withConnection { valkey in
+            try await valkey.zrevrange("leaderboard", 0, n - 1, withScores: true)
+        }
+    }
+}
+
+

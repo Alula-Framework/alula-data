@@ -1,4 +1,4 @@
-import FlightMigrate
+import AlulaMigrate
 
 // Wider DSL exercise: composite primary key, foreign keys with referential actions,
 // timestamps() sugar, and an index.
