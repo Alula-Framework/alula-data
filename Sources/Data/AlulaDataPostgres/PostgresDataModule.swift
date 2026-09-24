@@ -62,6 +62,24 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
                 "datasource.\(name).reset_on_release", as: Bool.self) ?? true
         let dataSource = try PostgresDataSource(settings: settings, resetOnRelease: reset)
         self.dataSource = dataSource
+        if let replicaURL = try configuration.getIfPresent(
+            DataSourceConfigKey.replicaURL(datasource: name), as: String.self)
+        {
+            let replicaSettings = try DataSourceSettings(
+                name: "\(name)-replica", url: replicaURL,
+                poolSize: try configuration.getIfPresent(
+                    DataSourceConfigKey.replicaPoolSize(datasource: name), as: Int.self)
+                    ?? settings.poolSize,
+                checkoutTimeout: settings.checkoutTimeout)
+            let replica = try PostgresDataSource(settings: replicaSettings, resetOnRelease: reset)
+            dataSource.attach(
+                replica: ReplicaAttachment(
+                    pool: replica,
+                    fallbackToPrimary: try configuration.getIfPresent(
+                        DataSourceConfigKey.replicaFallback(datasource: name), as: Bool.self)
+                        ?? true,
+                    logger: Logger(label: "alula.data.postgres.\(name)")))
+        }
         self.liveness = DataSourceLiveness(datasourceName: name) { [dataSource] in
             try await dataSource.ping()
         }
@@ -85,6 +103,8 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
         PostgresPoolService(dataSource: dataSource)
     }
 
+    /// The replica's pool runs beside the primary's and shuts down with it.
+
     /// A pool is what everything else borrows from, so it starts first and
     /// closes last. Without saying so, the order came from however the
     /// application listed its modules, and the shape every example uses put
@@ -104,6 +124,29 @@ struct PostgresPoolService: Service {
     let dataSource: PostgresDataSource
 
     func run() async throws {
-        try await dataSource.run()
+        guard let replica = dataSource.replica else {
+            try await dataSource.run()
+            return
+        }
+        // A replica failing to start must not take the primary down with it:
+        // reads fall back, so the service is still whole.
+        // The primary decides when this service ends; the replica rides along.
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                do {
+                    try await replica.run()
+                } catch {
+                    if Task.isCancelled { return }
+                    Logger(label: "alula.data.postgres").error(
+                        "read replica pool stopped; reads use the primary",
+                        metadata: ["datasource": "\(replica.name)", "error": "\(error)"])
+                    // Parked until shutdown: returning would end nothing,
+                    // and throwing would end the primary too.
+                    while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+                }
+            }
+            defer { group.cancelAll() }
+            try await dataSource.run()
+        }
     }
 }

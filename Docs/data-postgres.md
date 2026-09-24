@@ -139,6 +139,42 @@ emitted a literal `COMMIT` that ended the enclosing transaction, and writes
 the caller intended to roll back became durable with no error anywhere.
 Constructing the repo per operation removes the thing that went stale.
 
+### Read replicas
+
+```yaml
+datasource:
+  primary:
+    url: postgres://app@primary/db
+    replica:
+      url: postgres://app@replica/db
+      pool_size: 8          # default: the primary's
+      fallback: true        # default: read from the primary if the replica can't serve
+```
+
+Reads opt in, one call at a time:
+
+```swift
+let feed = try await pool.withReadRepo { repo in
+    try await repo.all(Post.where { $0.published }.limit(50))
+}
+```
+
+Nothing is routed to the replica automatically. A replica lags, and a read
+that must see the request's own write (sign up, then show the profile) would
+silently miss it, so reads stay on the primary through `withRepo` unless the
+code says otherwise. `withReadRepo` without a replica configured is
+`withRepo`, so the same code runs in development against one database.
+
+When the replica cannot give a connection (down, or its pool exhausted), the
+read goes to the primary and a warning is logged once. Recovery is logged
+once too. Set `fallback: false` to fail instead. The replica's pool runs
+beside the primary's and never takes it down. A replica is not part of
+readiness, because with fallback the service is still whole without it.
+
+The read repo is handed to your closure, not bound as the ambient
+`Repo.current`. Binding it would send any code reaching for the ambient repo,
+writes included, to a server that refuses them.
+
 ### Changesets
 
 Nothing to wire here. Hangar's `@Entity` generates the `Changesets`

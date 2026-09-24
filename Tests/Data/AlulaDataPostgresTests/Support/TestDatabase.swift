@@ -37,6 +37,16 @@ enum TestDatabase {
         ])
     }
 
+    /// The values `configuration` is built from, for a test adding its own.
+    static func values(datasource name: String = PrimaryDataSource.name, poolSize: Int = 4)
+        throws -> [String: String]
+    {
+        [
+            DataSourceConfigKey.url(datasource: name): try requireURL(),
+            DataSourceConfigKey.poolSize(datasource: name): "\(poolSize)",
+        ]
+    }
+
     static func settings(
         datasource name: String = PrimaryDataSource.name,
         poolSize: Int = 4

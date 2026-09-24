@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-09-24
+
+Read replicas: gap #7 on alula's 2026-09-24 audit (GAPS.md §0). Hangar
+could route reads to a replica, but alula-data's pool pinned every operation
+to one connection and nothing configured a replica.
+
+### Added
+
+- **`datasource.<name>.replica.url`** (plus `replica.pool_size` and
+  `replica.fallback`): a second pool for the datasource, run beside the
+  primary's.
+- **`PostgresDataSource.withReadRepo { repo in … }`** reads from the replica.
+  - Opt-in per call, never automatic, so read-your-writes code stays correct.
+  - Falls back to the primary when the replica cannot give a connection,
+    logged once on the way down and once on the way back.
+  - Without a replica it behaves as `withRepo`.
+- `PostgresDataSource.replica`.
+
 ## [0.13.0] - 2026-09-24
 
 Requires alula 0.38.0.

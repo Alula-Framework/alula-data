@@ -36,6 +36,8 @@ public final class PostgresDataSource: DataSource, Sendable {
     /// never grows the pool — a caller past the ceiling queues rather than
     /// growing it (core delta D8).
     public let poolSize: Int
+    /// The read replica `PostgresDataModule` attached, if configured.
+    let replicaSlot = Mutex<ReplicaAttachment?>(nil)
     /// The parsed `datasource.<name>.url` — `nil` when the pool was built
     /// from a hand-made `PostgresConnection.Configuration` instead.
     public let url: PostgresDataSourceURL?

@@ -34,6 +34,23 @@ public enum DataSourceConfigKey {
         key("url", datasource: name)
     }
 
+    /// `datasource.<name>.replica.url` — a read replica for this datasource,
+    /// used by reads that opt in. Optional.
+    public static func replicaURL(datasource name: String) -> String {
+        key("replica.url", datasource: name)
+    }
+
+    /// `datasource.<name>.replica.pool_size` — optional, default the primary's.
+    public static func replicaPoolSize(datasource name: String) -> String {
+        key("replica.pool_size", datasource: name)
+    }
+
+    /// `datasource.<name>.replica.fallback` — read from the primary when the
+    /// replica cannot give a connection. Optional, default `true`.
+    public static func replicaFallback(datasource name: String) -> String {
+        key("replica.fallback", datasource: name)
+    }
+
     /// `datasource.<name>.pool_size` — optional, default
     /// `DataSourceSettings.defaultPoolSize`.
     public static func poolSize(datasource name: String) -> String {
