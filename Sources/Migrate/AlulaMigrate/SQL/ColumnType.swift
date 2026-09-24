@@ -13,6 +13,9 @@ public struct ColumnType: Sendable, Equatable {
 
     /// A type the constructors don't cover, rendered verbatim (e.g. `"tsvector"`).
     public static func custom(_ sql: String) -> ColumnType { ColumnType(sql) }
+    /// A column of an enum type made with ``SchemaBuilder/createEnum(_:values:)``
+    /// — the type name quoted like any identifier.
+    public static func enumeration(_ typeName: String) -> ColumnType { ColumnType(SQL.identifier(typeName)) }
 
     public static let uuid = ColumnType("UUID")
     public static let text = ColumnType("TEXT")
@@ -78,7 +81,12 @@ public enum DefaultValue: Sendable, Equatable {
         case .null: return "NULL"
         case .string(let value): return SQL.stringLiteral(value)
         case .int(let value): return "\(value)"
-        case .double(let value): return "\(value)"
+        case .double(let value):
+            // Swift prints these as `nan` and `inf`, which are not SQL. The
+            // quoted words are, and every floating and numeric type accepts them.
+            if value.isNaN { return "'NaN'" }
+            if value.isInfinite { return value < 0 ? "'-Infinity'" : "'Infinity'" }
+            return "\(value)"
         case .bool(let value): return value ? "TRUE" : "FALSE"
         case .generatedUUID: return "gen_random_uuid()"
         }

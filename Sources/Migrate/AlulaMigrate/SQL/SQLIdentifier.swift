@@ -18,7 +18,15 @@ enum SQL {
     }
 
     /// Renders a string literal: `it's` → `'it''s'`.
+    ///
+    /// A value containing a backslash is written in escape-string form
+    /// (`E'a\\b'`), which means the same thing whatever the server's
+    /// `standard_conforming_strings` is — in a plain literal a backslash is
+    /// data with the setting on and an escape with it off, so the same
+    /// migration would store different text on two servers.
     static func stringLiteral(_ raw: String) -> String {
-        "'\(raw.replacingOccurrences(of: "'", with: "''"))'"
+        let quoted = raw.replacingOccurrences(of: "'", with: "''")
+        guard raw.contains("\\") else { return "'\(quoted)'" }
+        return "E'\(quoted.replacingOccurrences(of: "\\", with: "\\\\"))'"
     }
 }

@@ -123,6 +123,56 @@ public final class SchemaBuilder {
 
     // MARK: Extensions
 
+    // MARK: Enum types
+
+    /// `CREATE TYPE name AS ENUM ('a', 'b', …)`.
+    public func createEnum(_ name: String, values: [String]) {
+        let labels = values.map(SQL.stringLiteral).joined(separator: ", ")
+        statements.append("CREATE TYPE \(SQL.identifier(name)) AS ENUM (\(labels))")
+    }
+
+    /// `ALTER TYPE name ADD VALUE [IF NOT EXISTS] 'value' [BEFORE|AFTER 'other']`
+    /// — one statement per value, because Postgres adds one per statement.
+    ///
+    /// **A value added in a transaction cannot be used until it commits**
+    /// (SQLSTATE 55P04, "unsafe use of new value"). A migration that adds a
+    /// value and then writes it fails; add the value in its own migration,
+    /// and use it in a later one. `IF NOT EXISTS` (the default) makes the
+    /// addition safe to re-run.
+    public func addEnumValue(
+        _ name: String, _ value: String, ifNotExists: Bool = true, before: String? = nil,
+        after: String? = nil
+    ) {
+        precondition(before == nil || after == nil, "addEnumValue: pass before: or after:, not both")
+        var sql = "ALTER TYPE \(SQL.identifier(name)) ADD VALUE "
+        if ifNotExists { sql += "IF NOT EXISTS " }
+        sql += SQL.stringLiteral(value)
+        if let before { sql += " BEFORE \(SQL.stringLiteral(before))" }
+        if let after { sql += " AFTER \(SQL.stringLiteral(after))" }
+        statements.append(sql)
+    }
+
+    /// Several values, in order — one `ADD VALUE` statement each.
+    public func addEnumValues(_ name: String, _ values: [String], ifNotExists: Bool = true) {
+        for value in values { addEnumValue(name, value, ifNotExists: ifNotExists) }
+    }
+
+    /// `ALTER TYPE name RENAME VALUE 'old' TO 'new'`. Postgres cannot remove
+    /// an enum value; rename it, or rebuild the type.
+    public func renameEnumValue(_ name: String, from old: String, to new: String) {
+        statements.append(
+            "ALTER TYPE \(SQL.identifier(name)) RENAME VALUE \(SQL.stringLiteral(old)) TO \(SQL.stringLiteral(new))")
+    }
+
+    /// `DROP TYPE name`.
+    public func dropEnum(_ name: String, ifExists: Bool = false, cascade: Bool = false) {
+        var sql = "DROP TYPE "
+        if ifExists { sql += "IF EXISTS " }
+        sql += SQL.identifier(name)
+        if cascade { sql += " CASCADE" }
+        statements.append(sql)
+    }
+
     /// `CREATE EXTENSION` (e.g. `pgcrypto`, `citext`).
     public func createExtension(_ name: String, ifNotExists: Bool = true) {
         var sql = "CREATE EXTENSION "
