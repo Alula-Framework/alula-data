@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-09-24
+
+PubSub over Postgres: gap #9 on alula's 2026-09-24 audit (GAPS.md §0).
+Running more than one replica used to require Valkey.
+
+### Added
+
+- **`AlulaPubSubPostgres`** (trait `Postgres`): `PostgresPubSubAdapter` and
+  `AlulaPubSubPostgresModule` carry PubSub between nodes over
+  `LISTEN`/`NOTIFY`.
+  - One dedicated listening connection, reconnected automatically.
+  - Broadcasts go through the pool.
+  - Payloads over Postgres's 8000-byte NOTIFY limit are refused with their
+    size.
+  - See Docs/pubsub-postgres.md.
+- `PostgresDataSource.dedicatedConnection()`: a connection outside the pool,
+  for long-lived sessions such as a `LISTEN`.
+
 ## [0.14.0] - 2026-09-24
 
 Read replicas: gap #7 on alula's 2026-09-24 audit (GAPS.md §0). Hangar

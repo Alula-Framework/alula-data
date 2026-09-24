@@ -37,6 +37,7 @@ let package = Package(
         .library(name: "AlulaDataPostgres", targets: ["AlulaDataPostgres"]),
         .library(name: "AlulaSchedulerPostgres", targets: ["AlulaSchedulerPostgres"]),
         .library(name: "AlulaQueuePostgres", targets: ["AlulaQueuePostgres"]),
+        .library(name: "AlulaPubSubPostgres", targets: ["AlulaPubSubPostgres"]),
         .library(name: "AlulaMigrate", targets: ["AlulaMigrate"]),
         .library(name: "AlulaMigrateCLI", targets: ["AlulaMigrateCLI"]),
 
@@ -176,6 +177,23 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ],
             path: "Sources/Queue/AlulaQueuePostgres",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+
+        // PubSub between nodes over LISTEN/NOTIFY: clustering with Postgres alone.
+        .target(
+            name: "AlulaPubSubPostgres",
+            dependencies: [
+                "AlulaDataPostgres",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaPubSub", package: "alula"),
+                .product(
+                    name: "PostgresNIO", package: "postgres-nio",
+                    condition: .when(traits: ["Postgres"])),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
+            ],
+            path: "Sources/PubSub/AlulaPubSubPostgres",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
@@ -418,6 +436,16 @@ let package = Package(
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
             ],
             path: "Tests/Sessions/AlulaSessionsValkeyTests",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "AlulaPubSubPostgresTests",
+            dependencies: [
+                "AlulaPubSubPostgres", "AlulaDataPostgres", "AlulaDataCore",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaPubSub", package: "alula"),
+            ],
+            path: "Tests/PubSub/AlulaPubSubPostgresTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

@@ -317,6 +317,16 @@ public final class PostgresDataSource: DataSource, Sendable {
         }
     }
 
+    /// A connection **outside** the pool, with the pool's settings, owned by
+    /// the caller and closed by it.
+    ///
+    /// For work that holds a session for a long time: a `LISTEN`, which lives
+    /// on the connection that issued it. Taking a pooled connection for that
+    /// would shrink the pool by one for the life of the process.
+    public func dedicatedConnection() async throws -> PostgresConnection {
+        try await dial()
+    }
+
     private func dial() async throws -> PostgresConnection {
         let id = state.withLock { state -> Int in
             state.nextConnectionID += 1

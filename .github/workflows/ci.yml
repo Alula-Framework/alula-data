@@ -277,7 +277,7 @@ jobs:
                         AlulaMigrate AlulaMigrateCore \
                         AlulaSchedulerPostgres AlulaPubSubValkey \
                         AlulaSessionsValkey AlulaRateLimitValkey \
-                        AlulaQueuePostgres; do
+                        AlulaQueuePostgres AlulaPubSubPostgres; do
             echo "::group::$target"
             swift package --enable-all-traits \
               --allow-writing-to-directory "./docs/$target" \
