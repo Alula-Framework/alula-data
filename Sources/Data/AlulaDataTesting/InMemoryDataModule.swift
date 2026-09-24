@@ -34,6 +34,11 @@ public final class InMemoryDataModule<Name: DataSourceName>: AlulaModule {
     /// Its liveness probe, provided as a value like the real store modules'.
     public let liveness: DataSourceLiveness
 
+    /// This datasource's contribution to readiness: the liveness probe as a
+    /// `HealthCheck`, collected by the composition root for Actuator. Without
+    /// it a dead store reported healthy.
+    public let healthChecks: [HealthCheck]
+
     /// Configuration is optional for the in-memory store — it is "backed by
     /// nothing", so there is no URL to require; `datasource.<name>.pool_size`
     /// is honored when present and defaults to 4 connections. A bad pool size
@@ -52,5 +57,6 @@ public final class InMemoryDataModule<Name: DataSourceName>: AlulaModule {
         self.liveness = DataSourceLiveness(datasourceName: name) { [dataSource] in
             try await dataSource.ping()
         }
+        self.healthChecks = [liveness.healthCheck]
     }
 }

@@ -54,6 +54,21 @@ struct RegistrationTests {
         await #expect(throws: StoreDown.self) { try await module.liveness.ping() }
     }
 
+    @Test("the module contributes its probe to readiness, and it fails when the store does")
+    func contributesReadinessCheck() async throws {
+        // The probe existed for months with nothing reading it: a dead store
+        // reported ready. The contribution is what Actuator collects.
+        struct StoreDown: Error {}
+        let module = try InMemoryDataModule<PrimaryDataSource>()
+        let check = try #require(module.healthChecks.first)
+        #expect(module.healthChecks.count == 1)
+        #expect(check.name == "datasource.primary")
+        #expect(await check.run() == .passed)
+
+        module.dataSource.failPings(with: StoreDown())
+        #expect(await check.run() != .passed)
+    }
+
     @Test("the composition root aggregates every module's liveness probe")
     func livenessAggregation() throws {
         // What `DataSourceLiveness.all(in: container)` used to discover through

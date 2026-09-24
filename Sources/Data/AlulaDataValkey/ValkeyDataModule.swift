@@ -39,6 +39,11 @@ public final class ValkeyDataModule<Name: DataSourceName>: AlulaModule {
     /// value for the composition root to aggregate for Actuator.
     public let liveness: DataSourceLiveness
 
+    /// This datasource's contribution to readiness: the liveness probe as a
+    /// `HealthCheck`, collected by the composition root for Actuator. Without
+    /// it a dead store reported healthy.
+    public let healthChecks: [HealthCheck]
+
     /// A bad URL or pool size fails composition — earlier than the `freeze()`
     /// factory this used to be, and much earlier than the first command.
     public init(configuration: Configuration) throws {
@@ -55,6 +60,7 @@ public final class ValkeyDataModule<Name: DataSourceName>: AlulaModule {
         self.liveness = DataSourceLiveness(datasourceName: name) { [dataSource] in
             try await dataSource.ping()
         }
+        self.healthChecks = [liveness.healthCheck]
     }
 
     public init() {

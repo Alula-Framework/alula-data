@@ -48,7 +48,7 @@ anything. The pool sat at zero established, answered `poolExhausted`, and
 blamed the operator's `pool_size` until the process was restarted. A blip
 became permanent.
 
-`ping()` is the probe Actuator reads. Note that `shutdown()` is what
+`ping()` is the probe Actuator's readiness check runs (through the module's `healthChecks`). Note that `shutdown()` is what
 returns connections: a `ValkeyDataSource` started by hand in a test and
 never shut down keeps its connections for the lifetime of the process.
 Under `Alula.bootstrap` the module's service handles that.

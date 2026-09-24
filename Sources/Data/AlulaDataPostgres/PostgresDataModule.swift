@@ -40,11 +40,14 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
     public let dataSource: PostgresDataSource
 
     /// This datasource's liveness probe — "is the store answering right now",
-    /// wrapping the pool's `ping()`. Provided as a value so the composition
-    /// root can aggregate `[DataSourceLiveness]` for Actuator, the way the
-    /// container's `register(dataSource:)` used to register one alongside the
-    /// pool.
+    /// wrapping the pool's `ping()`. Readiness gets it through
+    /// ``healthChecks``.
     public let liveness: DataSourceLiveness
+
+    /// This datasource's contribution to readiness: the liveness probe as a
+    /// `HealthCheck`, collected by the composition root for Actuator. Without
+    /// it a dead store reported healthy.
+    public let healthChecks: [HealthCheck]
 
     /// A bad URL or pool size fails composition — earlier than the `freeze()`
     /// factory this used to be, and much earlier than the first query.
@@ -62,6 +65,7 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
         self.liveness = DataSourceLiveness(datasourceName: name) { [dataSource] in
             try await dataSource.ping()
         }
+        self.healthChecks = [liveness.healthCheck]
     }
 
     public init() {
