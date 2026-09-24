@@ -23,6 +23,11 @@ on each other's row locks.
 ``PostgresQueueStore/enqueue(_:in:)`` writes a job inside the caller's own
 transaction, so the job exists exactly when the change that caused it does.
 
+``Outbox`` builds on that to publish a message if and only if a
+transaction commits: the message is written as a job in the transaction,
+and the worker publishes it to the application's `PubSub` afterwards. List
+``AlulaOutboxModule`` to get one.
+
 The table is not created at boot. Put ``PostgresQueueStore/schema(table:)``
 in a migration, or call ``PostgresQueueStore/createTableIfNeeded()`` in
 tests.
@@ -32,3 +37,8 @@ tests.
 - ``AlulaQueuePostgresModule``
 - ``PostgresQueueStore``
 - ``PostgresQueueStoreError``
+
+### Outbox
+
+- ``Outbox``
+- ``AlulaOutboxModule``

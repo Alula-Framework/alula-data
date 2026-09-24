@@ -50,7 +50,7 @@ you need.
 | `AlulaDataPostgres` | PostgreSQL data source over PostgresNIO, with Hangar for queries. |
 | `AlulaPubSubValkey` | Carries Alula's PubSub between nodes over Valkey, which makes Channels broadcast, Presence membership, and `ClusteredPubSub` work across servers. Requires the `Valkey` trait. |
 | `AlulaSchedulerPostgres` | Makes an Alula scheduled job's `.once` mean once across every server, using a Postgres lease row. Requires the `Postgres` trait. |
-| `AlulaQueuePostgres` | A durable store for Alula's job queue: claims with `FOR UPDATE SKIP LOCKED`, and can enqueue inside your own transaction. Requires the `Postgres` trait. |
+| `AlulaQueuePostgres` | A durable store for Alula's job queue: claims with `FOR UPDATE SKIP LOCKED`, can enqueue inside your own transaction, and an `Outbox` that publishes to PubSub only on commit. Requires the `Postgres` trait. |
 | `AlulaPubSubPostgres` | PubSub between nodes over Postgres `LISTEN`/`NOTIFY` — clustering without Valkey (payloads ≤ 8000 bytes). Requires the `Postgres` trait. |
 | `AlulaMigrate` / `AlulaMigrateCLI` | Migration runner and its command line interface. |
 | `AlulaCacheValkey` | Distributed cache over Valkey. |

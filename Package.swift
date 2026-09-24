@@ -170,6 +170,7 @@ let package = Package(
                 "AlulaDataPostgres",
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "AlulaQueue", package: "alula"),
+                .product(name: "AlulaPubSub", package: "alula"),
                 .product(name: "Hangar", package: "hangar", condition: .when(traits: ["Postgres"])),
                 .product(
                     name: "PostgresNIO", package: "postgres-nio",
@@ -389,6 +390,7 @@ let package = Package(
                 "AlulaQueuePostgres", "AlulaDataPostgres", "AlulaDataCore",
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "AlulaQueue", package: "alula"),
+                .product(name: "AlulaPubSub", package: "alula"),
                 .product(name: "Hangar", package: "hangar", condition: .when(traits: ["Postgres"])),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
                 .product(name: "Logging", package: "swift-log"),

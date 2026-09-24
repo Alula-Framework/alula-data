@@ -16,18 +16,25 @@ enum QueueTestDatabase {
 
     static var isConfigured: Bool { url != nil }
 
+    /// One pool for every suite here. The start is shared as a task:
+    /// checking a stored pool and storing it after `await start()` let two
+    /// suites' first calls each build one, and the one overwritten was freed
+    /// with its connections open, which PostgresNIO traps on.
     actor Pool {
         static let shared = Pool()
-        private var started: PostgresDataSource?
+        private var starting: Task<PostgresDataSource, any Error>?
 
         func dataSource() async throws -> PostgresDataSource {
-            if let started { return started }
-            guard let url = QueueTestDatabase.url else { throw Missing() }
-            let dataSource = try PostgresDataSource(
-                settings: try DataSourceSettings(name: "queue-test", url: url, poolSize: 16))
-            try await dataSource.start()
-            started = dataSource
-            return dataSource
+            if let starting { return try await starting.value }
+            let task = Task {
+                guard let url = QueueTestDatabase.url else { throw Missing() }
+                let dataSource = try PostgresDataSource(
+                    settings: try DataSourceSettings(name: "queue-test", url: url, poolSize: 16))
+                try await dataSource.start()
+                return dataSource
+            }
+            starting = task
+            return try await task.value
         }
     }
 
@@ -35,8 +42,9 @@ enum QueueTestDatabase {
 
     static let table = "alula_jobs_test"
 
-    /// A fresh, empty table.
-    static func store() async throws -> PostgresQueueStore {
+    /// A fresh, empty table. Suites run in parallel, so each suite passes
+    /// its own: two truncating and creating one table race each other.
+    static func store(table: String = table) async throws -> PostgresQueueStore {
         let dataSource = try await Pool.shared.dataSource()
         let store = PostgresQueueStore(dataSource: dataSource, table: table)
         try await store.createTableIfNeeded()

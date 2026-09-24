@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-09-24
+
+A transactional outbox: the rest of gap #9 on alula's 2026-09-24 audit
+(GAPS.md §0).
+
+### Added
+
+- **`Outbox`** (AlulaQueuePostgres) publishes a message to the application's
+  `PubSub` if and only if the transaction it was written in commits.
+  - `publish(_:to:in:)` writes the message as a job in the caller's
+    transaction. The queue worker publishes it once committed.
+  - A committed message survives a crash before it is published. A
+    rolled-back one is never published.
+  - Delivery into the bus is at least once, and each message carries a
+    unique `outbox-id` in its metadata. Messages are not ordered.
+- **`AlulaOutboxModule`** provides the `Outbox` and registers its handler on
+  the `outbox` queue.
+- AlulaQueuePostgres now depends on alula's `AlulaPubSub` product.
+
 ## [0.15.0] - 2026-09-24
 
 PubSub over Postgres: gap #9 on alula's 2026-09-24 audit (GAPS.md §0).

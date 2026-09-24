@@ -42,3 +42,22 @@ For large payloads, write a row and notify its id.
   listener logs once, reconnects after `retry-delay-ms`, and logs the
   recovery. Messages sent while it was away are missed, as with any
   at-most-once transport.
+
+## Publishing on commit
+
+A publish inside a transaction goes out at once, whether or not the
+transaction later commits. To publish only what commits, use the outbox in
+AlulaQueuePostgres. It works with either bus:
+
+```swift
+try await repo.transaction { tx in
+    let order = try await tx.insert(order)
+    try await outbox.publish(OrderPlaced(id: order.id), to: "orders", in: tx)
+}
+```
+
+The message is written as a job in the same transaction and published by
+the queue worker after the commit. List `AlulaOutboxModule` (with
+`AlulaQueuePostgresModule` and `AlulaQueueWorkerModule`) and inject
+`Outbox`. Delivery into the bus is at least once. Each message carries an
+`outbox-id` in its metadata, for subscribers that must not act twice.
