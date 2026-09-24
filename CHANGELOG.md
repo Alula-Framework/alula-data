@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-09-24
+
+Requires Hangar 0.10.0, whose Postgres audit fixes — transactions that
+refuse to report an aborted commit, typed `DatabaseError`, safe pagination,
+chunked batch inserts, and more — every repository here now runs on. See
+Hangar's changelog; the breaking parts (server errors are `DatabaseError`,
+`Repo.execute` returns `DatabaseRows`) reach code that uses a `Repo`
+directly.
+
+### Added
+
+- **Enum types in migrations:** `createEnum`, `addEnumValue(s)` (one
+  `ADD VALUE` per value, `IF NOT EXISTS` by default), `renameEnumValue`,
+  `dropEnum`, and the column type `.enumeration(_:)`. A value added in a
+  transaction cannot be used before it commits (SQLSTATE 55P04), so add it in
+  one migration and use it in the next — documented, and tested.
+
+### Fixed
+
+- **A `.double` default of NaN or infinity** rendered `nan`/`inf`, which is
+  not SQL; it renders `'NaN'`/`'Infinity'`.
+- **String literals holding a backslash** are written as `E'…'`, so a
+  default or enum label means the same text whatever the server's
+  `standard_conforming_strings`.
+
 ## [0.16.0] - 2026-09-24
 
 A transactional outbox: the rest of gap #9 on alula's 2026-09-24 audit

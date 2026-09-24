@@ -77,7 +77,7 @@ let package = Package(
         // wants a cache or a data source but not an HTTP server.
         .package(url: "https://github.com/Alula-Framework/alula.git", from: "0.38.0", traits: []),
         .package(url: "https://github.com/Alula-Framework/swift-changeset.git", from: "0.2.0"),
-        .package(url: "https://github.com/Alula-Framework/hangar.git", from: "0.9.2"),
+        .package(url: "https://github.com/Alula-Framework/hangar.git", from: "0.10.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", from: "2.5.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
