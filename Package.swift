@@ -36,6 +36,7 @@ let package = Package(
         // Requires the "Postgres" trait.
         .library(name: "AlulaDataPostgres", targets: ["AlulaDataPostgres"]),
         .library(name: "AlulaSchedulerPostgres", targets: ["AlulaSchedulerPostgres"]),
+        .library(name: "AlulaQueuePostgres", targets: ["AlulaQueuePostgres"]),
         .library(name: "AlulaMigrate", targets: ["AlulaMigrate"]),
         .library(name: "AlulaMigrateCLI", targets: ["AlulaMigrateCLI"]),
 
@@ -73,7 +74,7 @@ let package = Package(
         // never AlulaWeb. Opting out of alula's default "Web" trait keeps
         // Hummingbird, NIO, and the TLS stack out of every consumer that
         // wants a cache or a data source but not an HTTP server.
-        .package(url: "https://github.com/Alula-Framework/alula.git", from: "0.37.0", traits: []),
+        .package(url: "https://github.com/Alula-Framework/alula.git", from: "0.38.0", traits: []),
         .package(url: "https://github.com/Alula-Framework/swift-changeset.git", from: "0.2.0"),
         .package(url: "https://github.com/Alula-Framework/hangar.git", from: "0.9.2"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
@@ -157,6 +158,24 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ],
             path: "Sources/Scheduler/AlulaSchedulerPostgres",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+
+        // The durable job queue: alula's `QueueStore` over a Postgres table,
+        // claimed with FOR UPDATE SKIP LOCKED.
+        .target(
+            name: "AlulaQueuePostgres",
+            dependencies: [
+                "AlulaDataPostgres",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaQueue", package: "alula"),
+                .product(name: "Hangar", package: "hangar", condition: .when(traits: ["Postgres"])),
+                .product(
+                    name: "PostgresNIO", package: "postgres-nio",
+                    condition: .when(traits: ["Postgres"])),
+                .product(name: "Logging", package: "swift-log"),
+            ],
+            path: "Sources/Queue/AlulaQueuePostgres",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
@@ -344,6 +363,19 @@ let package = Package(
                 .product(name: "AlulaScheduler", package: "alula"),
             ],
             path: "Tests/Scheduler/AlulaSchedulerPostgresTests",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "AlulaQueuePostgresTests",
+            dependencies: [
+                "AlulaQueuePostgres", "AlulaDataPostgres", "AlulaDataCore",
+                .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaQueue", package: "alula"),
+                .product(name: "Hangar", package: "hangar", condition: .when(traits: ["Postgres"])),
+                .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
+                .product(name: "Logging", package: "swift-log"),
+            ],
+            path: "Tests/Queue/AlulaQueuePostgresTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

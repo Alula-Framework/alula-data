@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-09-24
+
+Requires alula 0.38.0.
+
+### Added
+
+- **`AlulaQueuePostgres`** (trait `Postgres`): a durable store for alula's
+  job queue.
+  - `PostgresQueueStore` claims with one `FOR UPDATE SKIP LOCKED` statement,
+    so workers on every replica share a queue without contending.
+  - `enqueue(_:in:)` writes a job through a Hangar `Repo`, inside the
+    caller's transaction.
+  - `schema(table:)` gives the SQL for a migration; the table is not created
+    at boot.
+  - `AlulaQueuePostgresModule` provides it to `AlulaQueueModule`.
+    Configuration: `queue.postgres.table`, default `alula_jobs`.
+- A differential test runs every store-contract scenario against both the
+  in-memory store and Postgres, plus two Postgres-only tests: 8 concurrent
+  claimants never share a job, and a rolled-back transaction leaves no job.
+
 ## [0.12.0] - 2026-09-24
 
 Requires alula 0.37.0.
