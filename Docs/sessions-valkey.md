@@ -51,8 +51,8 @@ for the same reasons the cache adapter is not.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.32.0", traits: ["Web"]),
-.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.10.0", traits: ["Valkey"]),
+.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.47.0", traits: ["Web"]),
+.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.17.0", traits: ["Valkey"]),
 …
 .product(name: "AlulaSessionsValkey", package: "alula-data"),
 ```

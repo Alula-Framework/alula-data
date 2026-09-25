@@ -124,7 +124,7 @@ The suites `FLUSHDB` between tests — point them at throwaway servers only.
   which valkey-swift does not expose (`ValkeyConnectionFactory`'s
   `customHandler` hook is `package`-scoped), so the breaker cannot trip
   before ~20 s. `min_connections: 1` moves that cost to startup for a
-  server that is already unreachable, but a mid-alula blackhole can still
+  server that is already unreachable, but a mid-flight blackhole can still
   stall calls. The fix belongs upstream — a `connectTimeout` on
   `ValkeyConnectionConfiguration` — not in a per-call guard here.
 

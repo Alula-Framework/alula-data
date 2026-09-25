@@ -35,8 +35,8 @@ seam.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.26.1", traits: ["Web"]),
-.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.9.0", traits: ["Valkey"]),
+.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.47.0", traits: ["Web"]),
+.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.17.0", traits: ["Valkey"]),
 …
 .product(name: "AlulaRateLimitValkey", package: "alula-data"),
 ```

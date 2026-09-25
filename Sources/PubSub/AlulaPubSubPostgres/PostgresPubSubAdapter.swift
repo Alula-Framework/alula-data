@@ -3,6 +3,7 @@ import AlulaDataPostgres
 import AlulaPubSub
 import Foundation
 import Logging
+import Metrics
 import PostgresNIO
 import ServiceLifecycle
 import Synchronization
@@ -98,6 +99,7 @@ public final class PostgresPubSubAdapter: DistributedPubSubAdapter {
                         announcedLoss = false
                     }
                     try await connection.listen(on: channel) { notifications in
+                    var drops = PubSubDropReporter(adapter: "postgres", logger: logger)
                     for try await notification in notifications {
                         guard
                             let wire = try? JSONDecoder().decode(
@@ -109,7 +111,7 @@ public final class PostgresPubSubAdapter: DistributedPubSubAdapter {
                                 metadata: ["channel": "\(channel)"])
                             continue
                         }
-                        continuation.yield(Message(topic: wire.t, payload: payload, metadata: wire.m ?? [:]))
+                        drops.record(continuation.yield(Message(topic: wire.t, payload: payload, metadata: wire.m ?? [:])))
                     }
                     }
                 } catch {
@@ -199,4 +201,45 @@ struct PostgresPubSubListener: Service {
 public struct PostgresPubSubConfigurationError: Error, Sendable, CustomStringConvertible {
     public let description: String
     init(_ description: String) { self.description = description }
+}
+
+/// Counts and reports messages the bounded relay buffer dropped.
+///
+/// Dropping is the contract — PubSub is at-most-once, and a consumer that
+/// falls behind should lose stale updates rather than exhaust memory — but a
+/// loss nobody can see is an operational blind spot. Every drop increments
+/// `alula.pubsub.dropped` (dimensioned by adapter), and a warning with the
+/// running count is logged at most every ten seconds.
+struct PubSubDropReporter {
+    let adapter: String
+    let logger: Logger
+    /// The metrics backend; nil means the bootstrapped one, read per drop so
+    /// a backend bootstrapped after the adapter started is still reached.
+    let metrics: (any MetricsFactory)?
+    private var unreported = 0
+    private var lastWarning: ContinuousClock.Instant?
+
+    init(adapter: String, logger: Logger, metrics: (any MetricsFactory)? = nil) {
+        self.adapter = adapter
+        self.logger = logger
+        self.metrics = metrics
+    }
+
+    mutating func record(_ result: AsyncStream<Message>.Continuation.YieldResult) {
+        guard case .dropped = result else { return }
+        let dimensions = [("adapter", adapter)]
+        if let metrics {
+            Counter(label: "alula.pubsub.dropped", dimensions: dimensions, factory: metrics).increment()
+        } else {
+            Counter(label: "alula.pubsub.dropped", dimensions: dimensions).increment()
+        }
+        unreported += 1
+        let now = ContinuousClock.now
+        if let lastWarning, now - lastWarning < .seconds(10) { return }
+        logger.warning(
+            "pubsub relay buffer full; dropped the oldest messages",
+            metadata: ["adapter": .string(adapter), "dropped": .stringConvertible(unreported)])
+        unreported = 0
+        lastWarning = now
+    }
 }

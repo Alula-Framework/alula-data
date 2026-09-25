@@ -11,7 +11,7 @@ import AlulaCacheTesting
 /// to know waiters have actually parked. No test sleeps to "let" something
 /// happen: a sleep would be a guess about scheduling that races on a loaded
 /// machine and silently stops testing the intended ordering.
-@Suite("Single-alula — stampede protection")
+@Suite("Single-flight — stampede protection")
 struct SingleFlightTests {
 
     private let key = CacheKey(namespace: "prices", parts: ["hot"])

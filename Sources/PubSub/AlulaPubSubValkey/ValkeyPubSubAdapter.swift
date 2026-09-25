@@ -1,6 +1,7 @@
 import AlulaPubSub
 import Foundation
 import Logging
+import Metrics
 import Synchronization
 import Valkey
 
@@ -125,12 +126,13 @@ public struct ValkeyPubSubAdapter: DistributedPubSubAdapter {
                 while !Task.isCancelled {
                     do {
                         try await client.subscribe(to: channel) { subscription in
+                            var drops = PubSubDropReporter(adapter: "valkey", logger: logger)
                             for try await entry in subscription {
                                 guard !Task.isCancelled else { return }
                                 delay = retryDelay  // a delivery means we are connected
                                 do {
-                                    continuation.yield(
-                                        try WireMessage.decode(Data(entry.message)))
+                                    drops.record(continuation.yield(
+                                        try WireMessage.decode(Data(entry.message))))
                                 } catch {
                                     // One unreadable message must not take
                                     // down the relay for every other node.
@@ -277,5 +279,46 @@ enum WireMessageError: Error, Equatable, CustomStringConvertible {
         case .truncated:
             return "an Alula PubSub frame ended inside its header."
         }
+    }
+}
+
+/// Counts and reports messages the bounded relay buffer dropped.
+///
+/// Dropping is the contract — PubSub is at-most-once, and a consumer that
+/// falls behind should lose stale updates rather than exhaust memory — but a
+/// loss nobody can see is an operational blind spot. Every drop increments
+/// `alula.pubsub.dropped` (dimensioned by adapter), and a warning with the
+/// running count is logged at most every ten seconds.
+struct PubSubDropReporter {
+    let adapter: String
+    let logger: Logger
+    /// The metrics backend; nil means the bootstrapped one, read per drop so
+    /// a backend bootstrapped after the adapter started is still reached.
+    let metrics: (any MetricsFactory)?
+    private var unreported = 0
+    private var lastWarning: ContinuousClock.Instant?
+
+    init(adapter: String, logger: Logger, metrics: (any MetricsFactory)? = nil) {
+        self.adapter = adapter
+        self.logger = logger
+        self.metrics = metrics
+    }
+
+    mutating func record(_ result: AsyncStream<Message>.Continuation.YieldResult) {
+        guard case .dropped = result else { return }
+        let dimensions = [("adapter", adapter)]
+        if let metrics {
+            Counter(label: "alula.pubsub.dropped", dimensions: dimensions, factory: metrics).increment()
+        } else {
+            Counter(label: "alula.pubsub.dropped", dimensions: dimensions).increment()
+        }
+        unreported += 1
+        let now = ContinuousClock.now
+        if let lastWarning, now - lastWarning < .seconds(10) { return }
+        logger.warning(
+            "pubsub relay buffer full; dropped the oldest messages",
+            metadata: ["adapter": .string(adapter), "dropped": .stringConvertible(unreported)])
+        unreported = 0
+        lastWarning = now
     }
 }

@@ -1,5 +1,5 @@
 {
-  "originHash" : "7c75bd02c67fced7a7ae57fbb19395c73bec77508839dd489357572af80999e8",
+  "originHash" : "ddd207de8e593e541004fa2761301bc6453794ffb68da0fd25a36f31e0cab25c",
   "pins" : [
     {
       "identity" : "alula",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Alula-Framework/hangar.git",
       "state" : {
-        "revision" : "bed0156fa416f63d92adec0921522db52382b505",
-        "version" : "0.10.0"
+        "revision" : "b8218e55b2ab7a8a5b93f22eb1d22acaacb2e5b5",
+        "version" : "0.10.1"
       }
     },
     {

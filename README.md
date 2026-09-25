@@ -26,11 +26,11 @@ Both are opt-in — name a driver to get it:
 
 ```swift
 // In-memory cache and the data protocols. No driver resolved at all.
-.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.7.0")
+.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.17.0")
 
 // With PostgreSQL.
 .package(url: "https://github.com/Alula-Framework/alula-data.git",
-         from: "0.7.0", traits: ["Postgres"])
+         from: "0.17.0", traits: ["Postgres"])
 ```
 
 **Swift 6.3 or later is required**: through 6.2.x, SwiftPM did not resolve a
@@ -44,7 +44,7 @@ you need.
 
 | Product | What it is |
 | --- | --- |
-| `AlulaCache` | Cache protocol, in-memory implementation, single-alula coalescing, `@Cacheable`. |
+| `AlulaCache` | Cache protocol, in-memory implementation, single-flight coalescing, `@Cacheable`. |
 | `AlulaDataCore` | `DataSource`, per-operation connection leasing and queueing, changeset integration. Deliberately **no** shared transaction abstraction — transactions belong to the layer above a driver (Hangar's `repo.transaction { }` for Postgres), on top of the one thing that is genuinely shared. |
 | `AlulaMigrateCore` | Migration discovery and ordering, plus the build tool plugin — no driver required. |
 | `AlulaDataPostgres` | PostgreSQL data source over PostgresNIO, with Hangar for queries. |

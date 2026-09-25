@@ -680,29 +680,20 @@ public final class PostgresDataSource: DataSource, Sendable {
         }
     }
 
-    // MARK: - Transaction bookkeeping (currently unwired — see below)
+    // MARK: - Transaction bookkeeping
 
     /// Marks `connection` as carrying an open transaction, so a lease that
     /// leaks mid-transaction is rolled back before reuse (see `release`).
     ///
-    /// **Nothing calls this today.** `PostgresTransactionCoordinator` did, and
-    /// it went away with `@Transactional`: transactions are now Hangar's
-    /// `repo.transaction { }`, which issues `BEGIN` over the connection
-    /// without telling the pool. So `openTransactions` stays empty and
-    /// `release`'s `.rollbackFirst` path is unreachable.
-    ///
-    /// What holds the guarantee up in its place is `resetOnRelease`: a
-    /// connection returned mid-transaction fails `DISCARD ALL` — Postgres
-    /// refuses it inside a transaction block — and `resetAndRepool` drops a
-    /// connection whose reset failed rather than reusing it. That is the
-    /// default, and it covers the leak.
-    ///
-    /// With `datasource.<name>.reset_on_release: false` it is *not* covered:
-    /// a connection returned between `BEGIN` and `COMMIT` goes back to the
-    /// pool with the transaction open, and the next borrower inherits it.
-    /// Kept rather than deleted because re-wiring it is what closing that
-    /// hole looks like — Hangar would have to tell the pool, which needs a
-    /// seam it does not have yet.
+    /// Called through Hangar's `TransactionObserver`, which every `Repo` this
+    /// pool builds carries (``transactionObserver(for:)``): Hangar sends
+    /// `BEGIN`/`COMMIT` itself, so without it the pool could not tell a
+    /// connection mid-transaction from an idle one. For a while it could not —
+    /// the coordinator that used to call this went away with
+    /// `@Transactional` — and `DISCARD ALL` failing inside a transaction block
+    /// was the only guard, which `reset_on_release: false` removed: the next
+    /// borrower inherited the open transaction. Now `release`'s
+    /// `.rollbackFirst` path covers every setting.
     func markTransactionOpen(_ connection: PostgresConnection) {
         state.withLock { _ = $0.openTransactions.insert(ObjectIdentifier(connection)) }
     }
@@ -711,11 +702,20 @@ public final class PostgresDataSource: DataSource, Sendable {
         state.withLock { _ = $0.openTransactions.remove(ObjectIdentifier(connection)) }
     }
 
+    /// What a `Repo` over `connection` reports its outermost transactions to.
+    func transactionObserver(for connection: PostgresConnection) -> TransactionObserver {
+        TransactionObserver(
+            began: { [self] in markTransactionOpen(connection) },
+            ended: { [self] in markTransactionClosed(connection) })
+    }
+
     // MARK: - Introspection (tests, Actuator)
 
     /// Connections currently checked out. "Scope close returned the
     /// connection" is `activeCheckouts == 0` after `withScope`.
     public var activeCheckouts: Int { state.withLock { $0.checkedOut.count } }
+    /// Connections the pool knows to be inside a transaction.
+    var openTransactionCount: Int { state.withLock { $0.openTransactions.count } }
     /// Connections sitting in the pool ready for reuse.
     public var availableConnections: Int { state.withLock { $0.available.count } }
     /// Live connections, checked out or pooled.

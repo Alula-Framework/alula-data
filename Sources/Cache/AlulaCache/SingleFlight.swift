@@ -1,6 +1,6 @@
 import Foundation
 
-/// Local single-alula: concurrent calls on this instance for
+/// Local single-flight: concurrent calls on this instance for
 /// the same key coalesce into one execution of the underlying method. An
 /// actor-guarded in-flight map — genuinely stateful, serialized-mutation
 /// state, exactly the case Core reserves actors for.

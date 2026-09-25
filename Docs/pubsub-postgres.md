@@ -59,5 +59,7 @@ try await repo.transaction { tx in
 The message is written as a job in the same transaction and published by
 the queue worker after the commit. List `AlulaOutboxModule` (with
 `AlulaQueuePostgresModule` and `AlulaQueueWorkerModule`) and inject
-`Outbox`. Delivery into the bus is at least once. Each message carries an
+`Outbox`. The outbox guarantees the bus is *invoked* after the commit, at
+least once; it does not make the bus durable — delivery to subscribers stays
+at most once. Each message carries an
 `outbox-id` in its metadata, for subscribers that must not act twice.

@@ -4,9 +4,9 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.17.0] - 2026-09-24
+## [0.17.0] - 2026-09-25
 
-Requires Hangar 0.10.0, whose Postgres audit fixes — transactions that
+Requires Hangar 0.10.1, whose Postgres audit fixes — transactions that
 refuse to report an aborted commit, typed `DatabaseError`, safe pagination,
 chunked batch inserts, and more — every repository here now runs on. See
 Hangar's changelog; the breaking parts (server errors are `DatabaseError`,
@@ -23,11 +23,36 @@ directly.
 
 ### Fixed
 
+- **An open transaction can no longer reach the next borrower.** Hangar
+  sends `BEGIN`/`COMMIT` itself, so the pool could not tell a connection
+  mid-transaction from an idle one; its roll-back-before-reuse path had been
+  unreachable since transactions moved into Hangar. `DISCARD ALL` failing
+  inside a transaction block covered for it by default, but with
+  `reset_on_release: false` a connection released mid-transaction went
+  straight back to the pool, and the next scope inherited — and could commit
+  — the previous scope's work (external audit; reproduced). `withRepo` and
+  the read-replica path now hand Hangar 0.10.1's `TransactionObserver` to
+  every `Repo`, so the pool knows, whatever the reset setting.
+- **PubSub drops are observable.** Both relay adapters ignored what their
+  bounded buffer's `yield` returned, so a full buffer dropped messages with
+  no trace. Each drop increments `alula.pubsub.dropped` (dimensioned by
+  adapter), and a warning with the count is logged at most every ten seconds.
+  Dropping stays the contract; losing silently does not.
+- **Rename leftovers**: "single-alula" and "mid-alula" read "single-flight"
+  and "mid-flight" again, and the dependency snippets in the README and
+  guides name current versions (the old ones predate the `alula` names).
 - **A `.double` default of NaN or infinity** rendered `nan`/`inf`, which is
   not SQL; it renders `'NaN'`/`'Infinity'`.
 - **String literals holding a backslash** are written as `E'…'`, so a
   default or enum label means the same text whatever the server's
   `standard_conforming_strings`.
+
+### Documentation
+
+- **The outbox's guarantee is stated as what it is:** durable, at-least-once
+  *invocation* of the bus after the commit — not durable delivery. `publish`
+  does not throw, so a distributed adapter that cannot forward a message
+  logs and moves on while the outbox job completes.
 
 ## [0.16.0] - 2026-09-24
 

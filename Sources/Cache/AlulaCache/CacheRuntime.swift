@@ -5,7 +5,7 @@ import Metrics
 import Synchronization
 
 /// The runtime entry points the expansions call — key assembly, `get`,
-/// decode, single-alula, the body call, encode, `set`, and metrics
+/// decode, single-flight, the body call, encode, `set`, and metrics
 /// all live here, so the macro expansions stay small and the behavior is
 /// testable without macros.
 ///

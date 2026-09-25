@@ -63,7 +63,10 @@ extension DataSource where Connection == PostgresConnection {
         _ body: (Repo) async throws -> T
     ) async throws -> T {
         try await withConnection { connection in
-            let repo = Repo(connection: connection)
+            // This package's pool keeps a connection with an open transaction
+            // out of circulation — once it is told about the transaction.
+            let observer = (self as? PostgresDataSource)?.transactionObserver(for: connection)
+            let repo = Repo(connection: connection, transactionObserver: observer)
             return try await Repo.with(repo) {
                 try await body(repo)
             }

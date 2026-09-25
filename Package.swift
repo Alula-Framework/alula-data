@@ -17,8 +17,8 @@ import PackageDescription
 // PostgresNIO, valkey-swift, NIOSSL, and swift-crypto; with them it resolves
 // none of those.
 //
-//     .package(url: "...alula-data.git", from: "0.11.0")                      // cache + protocols
-//     .package(url: "...alula-data.git", from: "0.11.0", traits: ["Postgres"]) // + Postgres
+//     .package(url: "...alula-data.git", from: "0.17.0")                      // cache + protocols
+//     .package(url: "...alula-data.git", from: "0.17.0", traits: ["Postgres"]) // + Postgres
 //
 // Building this package itself: `swift test --enable-all-traits`.
 let package = Package(
@@ -77,7 +77,7 @@ let package = Package(
         // wants a cache or a data source but not an HTTP server.
         .package(url: "https://github.com/Alula-Framework/alula.git", from: "0.38.0", traits: []),
         .package(url: "https://github.com/Alula-Framework/swift-changeset.git", from: "0.2.0"),
-        .package(url: "https://github.com/Alula-Framework/hangar.git", from: "0.10.0"),
+        .package(url: "https://github.com/Alula-Framework/hangar.git", from: "0.10.1"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", from: "2.5.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
@@ -109,6 +109,8 @@ let package = Package(
                 "AlulaCacheMacrosImpl",
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Logging", package: "swift-log"),
+                .product(name: "Metrics", package: "swift-metrics"),
+                .product(name: "Metrics", package: "swift-metrics"),
                 .product(name: "Metrics", package: "swift-metrics"),
                 .product(name: "OrderedCollections", package: "swift-collections"),
             ],
@@ -446,6 +448,8 @@ let package = Package(
                 "AlulaPubSubPostgres", "AlulaDataPostgres", "AlulaDataCore",
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "AlulaPubSub", package: "alula"),
+                .product(name: "Metrics", package: "swift-metrics"),
+                .product(name: "Logging", package: "swift-log"),
             ],
             path: "Tests/PubSub/AlulaPubSubPostgresTests",
             swiftSettings: [.swiftLanguageMode(.v6)]

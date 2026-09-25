@@ -16,7 +16,7 @@ import AlulaCore
 /// 2. the store the runtime wraps — the `adapter` an adapter module provides,
 ///    matched by type in composition, or the in-memory store when none was
 ///    supplied. Absent adapter = single-instance deployment, the common case;
-/// 3. `CacheRuntime` — store + TTL policy + codec + single-alula + metrics.
+/// 3. `CacheRuntime` — store + TTL policy + codec + single-flight + metrics.
 ///    `init` **installs it into the `AlulaCaches` seam** that `@Cacheable`
 ///    reads, before any request, and provides it as the module's one value.
 ///
@@ -24,7 +24,7 @@ import AlulaCore
 /// modules with a connection (the Valkey client) expose their own.
 public struct AlulaCacheModule: AlulaModule {
     /// The process-wide runtime `@Cacheable` methods are served from — store,
-    /// TTL policy, codec, single-alula, metrics. The one public value this
+    /// TTL policy, codec, single-flight, metrics. The one public value this
     /// module provides; typed distinctly from `(any Cache)` on purpose, so it
     /// does not collide in composition with an adapter module that provides a
     /// store (the Presence lesson, D17).

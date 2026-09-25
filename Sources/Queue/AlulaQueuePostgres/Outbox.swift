@@ -27,9 +27,11 @@ import Hangar
 ///
 /// What it guarantees, and what it leaves to the bus:
 ///
-/// - **Committed means published.** A committed message is published by
-///   whichever replica's worker claims it, after a crash or a restart too.
-///   A rolled-back one never is.
+/// - **Committed means handed to the bus.** A committed message is passed
+///   to `PubSub.publish` by whichever replica's worker claims it, after a
+///   crash or a restart too. A rolled-back one never is. The outbox's
+///   guarantee ends there: it is durable *invocation* of the bus after the
+///   commit, not durable delivery to subscribers.
 /// - **At least once into the bus.** A worker that dies after publishing
 ///   and before recording it leaves the job to be claimed again, so a
 ///   subscriber can see a message twice. Each message carries a unique
@@ -38,6 +40,10 @@ import Hangar
 ///   written in sequence can be published in either order.
 /// - **The bus is still the bus.** Once published, delivery is the
 ///   `PubSub`'s: at most once, to the subscribers present at the time.
+///   `publish` does not throw, so a distributed adapter that fails to
+///   forward a message logs it and moves on, and the outbox job still
+///   completes. A consumer that needs every event durably — billing, an
+///   external system — should consume the queue itself, not the bus.
 ///   The outbox fixes the gap between the database and the bus, not the
 ///   bus itself.
 ///

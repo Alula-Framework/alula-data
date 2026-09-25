@@ -83,7 +83,8 @@ extension PostgresDataSource {
             // repo is for the reads written in `body`, and binding it would
             // route any code reaching for the ambient repo, writes included,
             // to a replica that refuses them.
-            let result = try await body(Repo(connection: connection))
+            let result = try await body(
+                Repo(connection: connection, transactionObserver: attachment.pool.transactionObserver(for: connection)))
             attachment.pool.release(connection)
             return result
         } catch {
