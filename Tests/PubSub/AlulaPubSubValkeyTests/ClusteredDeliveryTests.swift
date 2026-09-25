@@ -39,16 +39,12 @@ struct ClusteredDeliveryTests {
         let runnerA = Task { await clientA.run() }
         let runnerB = Task { await clientB.run() }
 
-        let nodeA = ClusteredPubSub(
-            local: LocalPubSub(),
-            adapter: ValkeyPubSubAdapter(
-                client: clientA, channel: channel, logger: PubSubTestServer.quietLogger),
-            nodeID: "node-a")
-        let nodeB = ClusteredPubSub(
-            local: LocalPubSub(),
-            adapter: ValkeyPubSubAdapter(
-                client: clientB, channel: channel, logger: PubSubTestServer.quietLogger),
-            nodeID: "node-b")
+        let adapterA = ValkeyPubSubAdapter(
+            client: clientA, channel: channel, logger: PubSubTestServer.quietLogger)
+        let adapterB = ValkeyPubSubAdapter(
+            client: clientB, channel: channel, logger: PubSubTestServer.quietLogger)
+        let nodeA = ClusteredPubSub(local: LocalPubSub(), adapter: adapterA, nodeID: "node-a")
+        let nodeB = ClusteredPubSub(local: LocalPubSub(), adapter: adapterB, nodeID: "node-b")
 
         let relayA = Task { try await PubSubRelayService(clustered: nodeA).run() }
         let relayB = Task { try await PubSubRelayService(clustered: nodeB).run() }
@@ -58,9 +54,17 @@ struct ClusteredDeliveryTests {
 
         let result = try await body(nodeA, nodeB)
 
+        // ValkeyPubSubService's order: stop the relays, wait for each
+        // adapter's subscription to finish unwinding, and only then stop the
+        // clients. This used to sleep 100 ms instead; on a slow CI runner the
+        // subscription was still releasing its connection when the client
+        // shut down, and valkey-swift trapped ("Cannot release connection
+        // when in an uninitialized state"), taking the whole test process
+        // with it.
         relayA.cancel()
         relayB.cancel()
-        try? await Task.sleep(for: .milliseconds(100))
+        await adapterA.drainSubscriptions()
+        await adapterB.drainSubscriptions()
         runnerA.cancel()
         runnerB.cancel()
         return result

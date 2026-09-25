@@ -27,11 +27,12 @@ struct ValkeyPubSubAdapterTests {
             client: client, channel: channel, retryDelay: .milliseconds(50),
             logger: PubSubTestServer.quietLogger)
         let result = try await body(adapter)
-        // Ordered teardown, matching ValkeyPubSubService: let the
-        // subscription unwind before the pool is cancelled. Cancelling the
-        // pool underneath a live subscription trips a fatal assertion inside
-        // valkey-swift.
-        try? await Task.sleep(for: .milliseconds(100))
+        // Ordered teardown, matching ValkeyPubSubService: the subscription
+        // finishes unwinding before the pool is cancelled. Cancelling the pool
+        // underneath a live subscription trips a fatal assertion inside
+        // valkey-swift. This waited 100 ms and hoped; now it waits for the
+        // thing itself.
+        await adapter.drainSubscriptions()
         runner.cancel()
         return result
     }
