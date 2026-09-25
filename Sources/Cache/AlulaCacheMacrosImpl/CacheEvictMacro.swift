@@ -24,8 +24,8 @@ public struct CacheEvictMacro: BodyMacro {
         }
 
         if !arguments.allEntries && target.keyParameterNames.isEmpty {
-            context.diagnoseError(
-                "cache.evictnokey",
+            context.diagnose(
+                .evictWithoutKey,
                 "@CacheEvict has no key-contributing parameters to derive an entry from — pass allEntries: true to evict the whole namespace, or add a key parameter.",
                 at: node)
             return CacheMacroSupport.existingBody(of: declaration)

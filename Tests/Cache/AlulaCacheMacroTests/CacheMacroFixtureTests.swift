@@ -193,7 +193,7 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.uncacheableMethod,
                     message:
                         "@Cacheable requires an async method — the Cache protocol is async, and a synchronous caching path would need a blocking store API this package deliberately doesn't have.",
                     line: 3, column: 10)
@@ -219,7 +219,7 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.uncacheableMethod,
                     message:
                         "@Cacheable requires a method that returns a value — caching Void is meaningless. Use @CacheEvict for side-effecting invalidation.",
                     line: 3, column: 10)
@@ -247,7 +247,7 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.invalidKeyParameter,
                     message:
                         "excluding: names parameter 'traceId', but price has no parameter with that internal name.",
                     line: 2, column: 5)
@@ -273,7 +273,7 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.evictWithoutKey,
                     message:
                         "@CacheEvict has no key-contributing parameters to derive an entry from — pass allEntries: true to evict the whole namespace, or add a key parameter.",
                     line: 2, column: 5)
@@ -301,7 +301,7 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.invalidNamespace,
                     message:
                         "namespace: must be a plain string literal — the namespace is compile-time cache identity, not a runtime value.",
                     line: 2, column: 27)
@@ -329,7 +329,7 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.uncacheableMethod,
                     message:
                         "@Cacheable does not support typed throws — the cache runtime propagates coalesced errors as any Error. Use an untyped throws.",
                     line: 3, column: 31)
@@ -363,7 +363,7 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.invalidNamespace,
                     message:
                         "namespace: 'hot-prices' contains '-'. Use lowercase letters, digits, underscores and dots: the namespace becomes the config key cache.namespaces.hot-prices, and Alula's environment overrides render that as ALULA_CACHE_NAMESPACES_… — anything else produces a variable name a shell cannot set, so the TTL silently cannot be configured.",
                     line: 2, column: 27)
@@ -391,7 +391,7 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.invalidNamespace,
                     message:
                         "namespace: is empty — it is this entry's cache identity and its config key.",
                     line: 2, column: 27)
@@ -422,10 +422,35 @@ struct CacheMacroFixtureTests {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(
+                DiagnosticSpec.coded(.invalidKeyParameter,
                     message:
                         "@Cacheable cannot key on a parameter with no internal name. Give it one — `func f(_ id: Int)` rather than `func f(_: Int)` — since both keying on it and excluding it are by internal name.",
                     line: 3, column: 16)
+            ],
+            macroSpecs: testMacros
+        )
+    }
+
+    /// Eviction's blast radius is decided at build time, so it must be
+    /// written out.
+    @Test("a computed allEntries: is ALD-CACHE-1002")
+    func computedAllEntries() {
+        assertMacroExpansion(
+            """
+            struct Catalog {
+                @CacheEvict(namespace: "prices", allEntries: everything)
+                func reprice() async throws {}
+            }
+            """,
+            expandedSource: """
+                struct Catalog {
+                    func reprice() async throws {}
+                }
+                """,
+            diagnostics: [
+                DiagnosticSpec.coded(.nonLiteralArgument,
+                    message: "allEntries: must be the literal true or false — eviction blast radius is a compile-time decision.",
+                    line: 2, column: 50)
             ],
             macroSpecs: testMacros
         )

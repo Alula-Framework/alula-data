@@ -35,48 +35,85 @@ public enum RegistryGenerator {
     }
 
     public struct GeneratorError: Error, CustomStringConvertible, Sendable {
-        public let problems: [String]
+        /// One problem with the migration set, located at the file that has it.
+        public struct Issue: Sendable, Equatable {
+            /// A stable code with a page in alula-data's `Diagnostics/`.
+            public let code: String
+            public let path: String
+            public let message: String
+            /// Other files in the same problem — the other half of a duplicate.
+            public let related: [String]
 
-        public var description: String {
-            problems.map { "error: [AlulaMigrate] \($0)" }.joined(separator: "\n")
+            /// `path:1:1: error: [CODE] message`, which SwiftPM attaches to the
+            /// file. The old `error: [AlulaMigrate] path: message` put the path
+            /// after the severity, so nothing could point at it.
+            public var rendered: String {
+                var lines = ["\(path):1:1: error: [\(code)] \(message)"]
+                lines.append(
+                    "    docs: https://github.com/Alula-Framework/alula-data/blob/main/Diagnostics/\(code).md")
+                lines += related.map { "\($0):1:1: note: the same version" }
+                return lines.joined(separator: "\n")
+            }
         }
+
+        public let issues: [Issue]
+
+        /// Each issue as printed.
+        public var problems: [String] { issues.map(\.rendered) }
+
+        public var description: String { problems.joined(separator: "\n") }
+    }
+
+    /// Codes for the migration set's problems.
+    enum Code {
+        static let invalidFilename = "ALD-MIGRATE-2001"
+        static let typeMismatch = "ALD-MIGRATE-2002"
+        static let duplicateVersion = "ALD-MIGRATE-2003"
     }
 
     /// Scans and validates the input files, returning discovered migrations sorted by version.
     public static func discover(files: [InputFile]) throws -> [DiscoveredMigration] {
         var discovered: [DiscoveredMigration] = []
-        var problems: [String] = []
+        var problems: [GeneratorError.Issue] = []
 
         for file in files {
             switch MigrationFilename.classify(file.filename) {
             case .notAMigration:
                 continue
             case .malformed(let reason):
-                problems.append("\(file.path): invalid migration filename: \(reason)")
+                problems.append(.init(
+                    code: Code.invalidFilename, path: file.path,
+                    message: "invalid migration filename: \(reason)", related: []))
             case .migration(let parsed):
                 let conformers = SourceScanner.migrationTypeNames(in: file.contents)
                 if conformers.isEmpty {
-                    problems.append(
-                        """
-                        \(file.path): no Migration type found. Expected a declaration like \
-                        'struct \(parsed.name): Migration { ... }'. Note that the conformance must \
-                        be declared at the type definition, not in an extension.
-                        """)
+                    problems.append(.init(
+                        code: Code.typeMismatch, path: file.path,
+                        message: """
+                            no Migration type found. Expected a declaration like \
+                            'struct \(parsed.name): Migration { ... }'. Note that the conformance must \
+                            be declared at the type definition, not in an extension.
+                            """,
+                        related: []))
                     continue
                 }
                 if conformers != [parsed.name] {
                     if conformers.count > 1 {
-                        problems.append(
-                            """
-                            \(file.path): found multiple Migration types (\(conformers.joined(separator: ", "))). \
-                            Each migration file must declare exactly one Migration type, named after the file.
-                            """)
+                        problems.append(.init(
+                            code: Code.typeMismatch, path: file.path,
+                            message: """
+                                found multiple Migration types (\(conformers.joined(separator: ", "))). \
+                                Each migration file must declare exactly one Migration type, named after the file.
+                                """,
+                            related: []))
                     } else {
-                        problems.append(
-                            """
-                            \(file.path): the filename promises a Migration type named '\(parsed.name)' but \
-                            the file declares '\(conformers[0])'. Rename the file or the type so they match.
-                            """)
+                        problems.append(.init(
+                            code: Code.typeMismatch, path: file.path,
+                            message: """
+                                the filename promises a Migration type named '\(parsed.name)' but \
+                                the file declares '\(conformers[0])'. Rename the file or the type so they match.
+                                """,
+                            related: []))
                     }
                     continue
                 }
@@ -97,19 +134,21 @@ public enum RegistryGenerator {
             byVersion[migration.version, default: []].append(migration)
         }
         for (version, group) in byVersion.sorted(by: { $0.key < $1.key }) where group.count > 1 {
-            let paths = group.map { "  - \($0.path)" }.sorted().joined(separator: "\n")
-            problems.append(
-                """
-                duplicate migration version \(version):
-                \(paths)
-                Each migration must have a unique timestamp prefix. This usually \
-                comes from a hand-edited or merge-conflicted filename; regenerate one of the \
-                timestamps with 'alula-migrate create'.
-                """)
+            let paths = group.map(\.path).sorted()
+            problems.append(.init(
+                code: Code.duplicateVersion, path: paths[paths.count - 1],
+                message: """
+                    duplicate migration version \(version), also used by \
+                    \(paths.dropLast().map { $0.split(separator: "/").last.map(String.init) ?? $0 }.joined(separator: ", ")). \
+                    Each migration must have a unique timestamp prefix. This usually comes from a \
+                    hand-edited or merge-conflicted filename; regenerate one of the timestamps with \
+                    'alula-migrate create'.
+                    """,
+                related: Array(paths.dropLast())))
         }
 
         guard problems.isEmpty else {
-            throw GeneratorError(problems: problems)
+            throw GeneratorError(issues: problems)
         }
         return discovered.sorted { $0.version < $1.version }
     }

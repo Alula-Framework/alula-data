@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-09-25
+
+alula-data's share of the Alula diagnostics design.
+
+### Changed
+
+- **Cache annotation errors carry codes.** `@Cacheable`, `@CachePut` and
+  `@CacheEvict` report `[ALD-CACHE-1001]` to `[ALD-CACHE-1005]`, each with a
+  note linking its page in `Diagnostics/`. `alula explain` points at them too.
+- **Migration errors are located at the file, with codes.** The registry
+  generator printed `error: [AlulaMigrate] <path>: …`, with the path after the
+  severity, so nothing attached the error to the file. It now prints
+  `<path>:1:1: error: [ALD-MIGRATE-200x] …`, and a duplicate version points at
+  one file with a note at the other. `GeneratorError` gains `issues` (code,
+  path, message, related files); `problems` is still each issue as printed.
+- A test fails if a code has no page, a page has no code, or no test
+  produces a code (8/8).
+
 ## [0.18.1] - 2026-09-25
 
 Found running Relay's rolling-restart scenarios (relay/docs/ISSUES.md #36, #37).

@@ -33,8 +33,8 @@ enum CacheMacroSupport {
         var arguments = Arguments()
         guard case .argumentList(let list) = node.arguments else {
             // Grammatically unreachable: namespace: is a required parameter.
-            context.diagnoseError(
-                "cache.arguments", "Cache annotations require at least namespace:.", at: node)
+            context.diagnose(
+                .invalidNamespace, "Cache annotations require at least namespace:.", at: node)
             return nil
         }
         for argument in list {
@@ -43,8 +43,8 @@ enum CacheMacroSupport {
                 guard let literal = argument.expression.as(StringLiteralExprSyntax.self),
                     literal.segments.allSatisfy({ $0.is(StringSegmentSyntax.self) })
                 else {
-                    context.diagnoseError(
-                        "cache.namespaceliteral",
+                    context.diagnose(
+                        .invalidNamespace,
                         "namespace: must be a plain string literal — the namespace is compile-time cache identity, not a runtime value.",
                         at: argument.expression)
                     return nil
@@ -62,8 +62,8 @@ enum CacheMacroSupport {
                     .compactMap { $0.as(StringSegmentSyntax.self)?.content.text }
                     .joined()
                 guard !namespace.isEmpty else {
-                    context.diagnoseError(
-                        "cache.namespaceempty",
+                    context.diagnose(
+                        .invalidNamespace,
                         "namespace: is empty — it is this entry's cache identity and its config key.",
                         at: argument.expression)
                     return nil
@@ -71,8 +71,8 @@ enum CacheMacroSupport {
                 if let bad = namespace.first(where: {
                     !($0.isLowercase && $0.isLetter) && !$0.isNumber && $0 != "_" && $0 != "."
                 }) {
-                    context.diagnoseError(
-                        "cache.namespacecharset",
+                    context.diagnose(
+                        .invalidNamespace,
                         "namespace: '\(namespace)' contains '\(bad)'. Use lowercase letters, digits, underscores and dots: the namespace becomes the config key cache.namespaces.\(namespace), and Alula's environment overrides render that as ALULA_CACHE_NAMESPACES_… — anything else produces a variable name a shell cannot set, so the TTL silently cannot be configured.",
                         at: argument.expression)
                     return nil
@@ -82,8 +82,8 @@ enum CacheMacroSupport {
                 arguments.ttl = argument.expression.trimmedDescription
             case "allEntries":
                 guard let literal = argument.expression.as(BooleanLiteralExprSyntax.self) else {
-                    context.diagnoseError(
-                        "cache.allentriesliteral",
+                    context.diagnose(
+                        .nonLiteralArgument,
                         "allEntries: must be the literal true or false — eviction blast radius is a compile-time decision.",
                         at: argument.expression)
                     return nil
@@ -91,8 +91,8 @@ enum CacheMacroSupport {
                 arguments.allEntries = literal.literal.tokenKind == .keyword(.true)
             case "excluding":
                 guard let array = argument.expression.as(ArrayExprSyntax.self) else {
-                    context.diagnoseError(
-                        "cache.excludingliteral",
+                    context.diagnose(
+                        .nonLiteralArgument,
                         "excluding: must be an array literal of parameter-name string literals.",
                         at: argument.expression)
                     return nil
@@ -102,8 +102,8 @@ enum CacheMacroSupport {
                         literal.segments.count == 1,
                         let segment = literal.segments.first?.as(StringSegmentSyntax.self)
                     else {
-                        context.diagnoseError(
-                            "cache.excludingliteral",
+                        context.diagnose(
+                            .nonLiteralArgument,
                             "excluding: must be an array literal of parameter-name string literals.",
                             at: element.expression)
                         return nil
@@ -131,29 +131,29 @@ enum CacheMacroSupport {
         in context: some MacroExpansionContext
     ) -> Target? {
         guard let function = declaration.as(FunctionDeclSyntax.self) else {
-            context.diagnoseError(
-                "cache.notfunction", "@\(macroName) can only be attached to a method or function.",
+            context.diagnose(
+                .uncacheableMethod, "@\(macroName) can only be attached to a method or function.",
                 at: node)
             return nil
         }
         guard let body = function.body else {
-            context.diagnoseError(
-                "cache.nobody", "@\(macroName) requires a function with a body.", at: function)
+            context.diagnose(
+                .uncacheableMethod, "@\(macroName) requires a function with a body.", at: function)
             return nil
         }
 
         let effects = function.signature.effectSpecifiers
         guard effects?.asyncSpecifier != nil else {
-            context.diagnoseError(
-                "cache.notasync",
+            context.diagnose(
+                .uncacheableMethod,
                 "@\(macroName) requires an async method — the Cache protocol is async, and a synchronous caching path would need a blocking store API this package deliberately doesn't have.",
                 at: function.name)
             return nil
         }
         let throwsClause = effects?.throwsClause
         if let throwsClause, throwsClause.leftParen != nil {
-            context.diagnoseError(
-                "cache.typedthrows",
+            context.diagnose(
+                .uncacheableMethod,
                 "@\(macroName) does not support typed throws — the cache runtime propagates coalesced errors as any Error. Use an untyped throws.",
                 at: throwsClause)
             return nil
@@ -162,8 +162,8 @@ enum CacheMacroSupport {
         let declaredReturn = function.signature.returnClause?.type.trimmedDescription
         let isVoid = declaredReturn == nil || declaredReturn == "Void" || declaredReturn == "()"
         if requiresResult && isVoid {
-            context.diagnoseError(
-                "cache.noreturn",
+            context.diagnose(
+                .uncacheableMethod,
                 "@\(macroName) requires a method that returns a value — caching Void is meaningless. Use @CacheEvict for side-effecting invalidation.",
                 at: function.name)
             return nil
@@ -178,8 +178,8 @@ enum CacheMacroSupport {
                 // internal name, and `_` is exactly the absence of one — so
                 // that advice sent the reader to a second error rather than a
                 // fix. Naming the parameter is the only way out.
-                context.diagnoseError(
-                    "cache.unnamedparameter",
+                context.diagnose(
+                    .invalidKeyParameter,
                     "@\(macroName) cannot key on a parameter with no internal name. Give it one — `func f(_ id: Int)` rather than `func f(_: Int)` — since both keying on it and excluding it are by internal name.",
                     at: parameter)
                 return nil
@@ -194,8 +194,8 @@ enum CacheMacroSupport {
             ($0.secondName ?? $0.firstName).text
         }
         for name in excluded where !allNames.contains(name) {
-            context.diagnoseError(
-                "cache.unknownexcluded",
+            context.diagnose(
+                .invalidKeyParameter,
                 "excluding: names parameter '\(name)', but \(function.name.text) has no parameter with that internal name.",
                 at: node)
             return nil

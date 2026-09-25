@@ -40,6 +40,9 @@ struct RegistryGeneratorTests {
             _ = try RegistryGenerator.discover(files: files)
         } catch let error as RegistryGenerator.GeneratorError {
             #expect(error.description.contains("duplicate migration version 20260714120000"))
+            #expect(error.issues.map(\.code) == ["ALD-MIGRATE-2003"])
+            #expect(error.description.contains(":1:1: error: [ALD-MIGRATE-2003]"))
+            #expect(error.description.contains(":1:1: note: the same version"))
             #expect(error.description.contains("One.swift"))
             #expect(error.description.contains("Two.swift"))
         } catch {
@@ -49,8 +52,14 @@ struct RegistryGeneratorTests {
 
     @Test func malformedTimestampIsABuildError() {
         let files = [file("2026071412000_M.swift", "struct M: Migration {}")]
-        #expect(throws: RegistryGenerator.GeneratorError.self) {
-            try RegistryGenerator.discover(files: files)
+        do {
+            _ = try RegistryGenerator.discover(files: files)
+            Issue.record("expected an error")
+        } catch let error as RegistryGenerator.GeneratorError {
+            // Located at the file, so SwiftPM attaches it there.
+            #expect(error.description.contains("2026071412000_M.swift:1:1: error: [ALD-MIGRATE-2001]"))
+        } catch {
+            Issue.record("unexpected \(error)")
         }
     }
 
@@ -74,6 +83,7 @@ struct RegistryGeneratorTests {
             Issue.record("expected an error")
         } catch let error as RegistryGenerator.GeneratorError {
             #expect(error.description.contains("no Migration type found"))
+            #expect(error.description.contains("error: [ALD-MIGRATE-2002]"))
         } catch {
             Issue.record("unexpected error type: \(error)")
         }
