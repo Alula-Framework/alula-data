@@ -290,3 +290,25 @@ struct WireMessageTests {
         }
     }
 }
+
+@Suite("AlulaPubSubValkeyModule — readiness")
+struct PubSubReadinessTests {
+    @Test("the module contributes a pubsub.valkey check that fails when Valkey does")
+    func unreachableFails() async throws {
+        let module = try AlulaPubSubValkeyModule(
+            configuration: Configuration(values: ["pubsub.valkey.url": "valkey://127.0.0.1:5"]))
+        #expect(module.healthChecks.map(\.name) == ["pubsub.valkey"])
+        let runner = Task { try await module.service?.run() }
+        defer { runner.cancel() }
+        #expect(!(await module.healthChecks[0].run()).passed)
+    }
+
+    @Test("and passes against a live server", .enabled(if: PubSubTestServer.isConfigured))
+    func liveServerPasses() async throws {
+        let module = try AlulaPubSubValkeyModule(
+            configuration: Configuration(values: ["pubsub.valkey.url": PubSubTestServer.url!]))
+        let runner = Task { try await module.service?.run() }
+        defer { runner.cancel() }
+        #expect(await module.healthChecks[0].run() == .passed)
+    }
+}

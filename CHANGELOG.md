@@ -20,6 +20,22 @@ Requires alula 0.48.0.
   error (`connection refused`, errno), or the server's message and SQLSTATE
   (`28P01` for a wrong password). Never the URL or the password; tests
   check both with a password that must not appear.
+- **Readiness sees Valkey-backed sessions and PubSub.**
+  `AlulaSessionsValkeyModule` and `AlulaPubSubValkeyModule` contribute a
+  `HealthCheck` (`sessions.valkey`, `pubsub.valkey`: a `PING`). Readiness
+  answered UP with Valkey gone, while every signed-in request failed and
+  realtime became single-node. The rate limiter's store has no check, on
+  purpose: it fails open by design, logging each request it could not
+  limit, and making readiness depend on it would turn that degraded mode
+  into an outage. Found building Relay.
+
+### Fixed
+
+- The documentation build failed: a DocC link to alula's
+  `StartupDiagnostic` from AlulaDataCore used double backticks, which only
+  resolve within the module.
+- `AlulaCache` declared swift-metrics' `Metrics` product three times, and
+  every consumer's build warned about it.
 
 ## [0.17.0] - 2026-09-25
 

@@ -35,3 +35,27 @@ struct ModuleTests {
         }
     }
 }
+
+@Suite("AlulaSessionsValkeyModule — readiness")
+struct SessionReadinessTests {
+    @Test("the module contributes a sessions.valkey check that fails when Valkey does")
+    func unreachableFails() async throws {
+        let module = try AlulaSessionsValkeyModule(
+            configuration: Configuration(values: ["sessions.valkey.url": "valkey://127.0.0.1:5"]))
+        #expect(module.healthChecks.map(\.name) == ["sessions.valkey"])
+        let runner = Task { try await module.service?.run() }
+        defer { runner.cancel() }
+        let result = await module.healthChecks[0].run()
+        #expect(!result.passed)
+    }
+
+    @Test("and passes against a live server", .enabled(if: !TestServer.available.isEmpty))
+    func liveServerPasses() async throws {
+        let url = try #require(TestServer.available.first?.url)
+        let module = try AlulaSessionsValkeyModule(
+            configuration: Configuration(values: ["sessions.valkey.url": url]))
+        let runner = Task { try await module.service?.run() }
+        defer { runner.cancel() }
+        #expect(await module.healthChecks[0].run() == .passed)
+    }
+}

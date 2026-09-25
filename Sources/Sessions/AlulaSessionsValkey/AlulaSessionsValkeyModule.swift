@@ -38,11 +38,21 @@ public struct AlulaSessionsValkeyModule: AlulaModule {
     /// The same value concretely, for the client-pool service.
     private let valkey: ValkeySessionStore
 
+    /// `sessions.valkey`, for readiness: a `PING`. Without the store every
+    /// signed-in request fails, which is as much "cannot serve" as a lost
+    /// database, and readiness said yes through it.
+    public let healthChecks: [HealthCheck]
+
     public init(configuration: Configuration) throws {
         let valkey = try ValkeySessionStore(
             settings: try ValkeySessionSettings.load(from: configuration))
         self.valkey = valkey
         self.store = valkey
+        self.healthChecks = [
+            HealthCheck(name: "sessions.valkey") { [client = valkey.client] in
+                _ = try await client.ping()
+            }
+        ]
     }
 
     public init() {

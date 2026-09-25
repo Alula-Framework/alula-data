@@ -110,8 +110,6 @@ let package = Package(
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Metrics", package: "swift-metrics"),
-                .product(name: "Metrics", package: "swift-metrics"),
-                .product(name: "Metrics", package: "swift-metrics"),
                 .product(name: "OrderedCollections", package: "swift-collections"),
             ],
             path: "Sources/Cache/AlulaCache",

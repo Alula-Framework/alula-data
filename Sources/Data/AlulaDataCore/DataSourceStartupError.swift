@@ -2,7 +2,7 @@ import AlulaCore
 
 /// A datasource could not establish its connections at startup.
 ///
-/// Alula prints a startup failure's ``StartupDiagnostic/startupDiagnostic``,
+/// Alula prints a startup failure's `StartupDiagnostic.startupDiagnostic`,
 /// and no longer its reflected form — which for a database error can carry
 /// secrets. A driver's own error is too quiet on its own: PostgresNIO's
 /// `PSQLError` describes itself as a generic "prevent accidental leakage"
