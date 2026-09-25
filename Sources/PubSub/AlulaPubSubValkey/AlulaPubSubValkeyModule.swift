@@ -137,7 +137,16 @@ struct ValkeyPubSubService: Service {
     let adapter: ValkeyPubSubAdapter
 
     func run() async throws {
-        let pool = Task { await client.client.run() }
+        // Detached, deliberately. `ValkeyClient.run()` wraps itself in
+        // `cancelWhenGracefulShutdown`, and an ordinary `Task` inherits this
+        // service's task-locals — the graceful-shutdown manager among them.
+        // The pool then shut itself down on this service's own shutdown
+        // signal, at the same moment as the drain below instead of after it,
+        // and when the pool won (a third of timed-out shutdowns in Relay
+        // Lab) the subscription's release found its connection already
+        // shut down and valkey-swift trapped: SIGILL instead of an exit.
+        // Detached, only the `pool.cancel()` below stops it.
+        let pool = Task.detached { await client.client.run() }
         defer { pool.cancel() }
 
         // Hold the pool open until the group shuts down or this task is

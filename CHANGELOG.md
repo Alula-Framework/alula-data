@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] - 2026-09-25
+
+Found running Relay's rolling-restart scenarios (relay/docs/ISSUES.md #36, #37).
+
+### Fixed
+
+- **A timed-out shutdown no longer crashes the process.** `ValkeyPubSubService`
+  ran the Valkey client in an ordinary `Task`, which inherits the service's
+  task-locals, including swift-service-lifecycle's graceful-shutdown manager.
+  `ValkeyClient.run()` wraps itself in `cancelWhenGracefulShutdown`, so the
+  pool shut itself down on the service's own shutdown signal, at the same
+  moment as the subscription drain rather than after it. When the pool won,
+  the subscription's release found its connection already shut down, and
+  valkey-swift's state machine trapped (SIGILL). Relay Lab hit it in 5 of 15
+  shutdowns that ran past `lifecycle.shutdown-timeout-seconds`; with the pool
+  in a detached task, 0 of 30.
+- **alula-data builds from a clean checkout.** `AlulaPubSubValkey` and
+  `AlulaPubSubPostgres` import `Metrics` for their drop counters but never
+  declared it. The 0.17.0 audit fix meant to add it to them, and put two
+  copies in `AlulaCache` instead; 0.18.0 removed those duplicates, leaving the
+  PubSub targets building only when another target had already made `Metrics`
+  visible. `swift build --explicit-target-dependency-import-check error` now
+  passes for every alula-data target.
+
 ## [0.18.0] - 2026-09-25
 
 Requires alula 0.48.0.

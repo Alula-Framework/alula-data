@@ -188,6 +188,10 @@ let package = Package(
                 "AlulaDataPostgres",
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "AlulaPubSub", package: "alula"),
+                // PubSubDropReporter's counter. Declared, not borrowed: this
+                // target built only when something else had already made
+                // `Metrics` visible, so alula-data failed a clean build.
+                .product(name: "Metrics", package: "swift-metrics"),
                 .product(
                     name: "PostgresNIO", package: "postgres-nio",
                     condition: .when(traits: ["Postgres"])),
@@ -203,6 +207,10 @@ let package = Package(
             dependencies: [
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "AlulaPubSub", package: "alula"),
+                // PubSubDropReporter's counter. Declared, not borrowed: this
+                // target built only when something else had already made
+                // `Metrics` visible, so alula-data failed a clean build.
+                .product(name: "Metrics", package: "swift-metrics"),
                 .product(
                     name: "Valkey", package: "valkey-swift",
                     condition: .when(traits: ["Valkey"])),
