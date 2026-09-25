@@ -115,10 +115,17 @@ extension ValkeyIntegrationSuite {
         func unreachableServerFailsStartPromptly(_ server: TestServer) async throws {
             // Port 1 answers nothing; posture is that bootstrap fails
             // before any request is served, not at first command.
-            let settings = try DataSourceSettings(name: "primary", url: "valkey://127.0.0.1:1", poolSize: 2)
+            let settings = try DataSourceSettings(
+                name: "primary", url: "valkey://:hunter2-secret@127.0.0.1:1", poolSize: 2)
             let source = try ValkeyDataSource(settings: settings)
-            await #expect(throws: (any Error).self) {
+            await #expect {
                 try await source.start()
+            } throws: { error in
+                // What alula prints at startup: where, and why — never the password.
+                guard let startup = error as? DataSourceStartupError else { return false }
+                let text = startup.startupDiagnostic
+                return text.contains("'primary'") && text.contains("127.0.0.1:1")
+                    && !text.contains("hunter2-secret") && !text.contains("valkey://")
             }
             #expect(source.isClosed)
         }

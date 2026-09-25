@@ -168,7 +168,12 @@ public final class ValkeyDataSource: DataSource, Sendable {
             ])
         } catch {
             await shutdown()
-            throw error
+            // Where the pool was dialling and what came back — never the URL
+            // or the password. See `DataSourceStartupError`.
+            guard !(error is CancellationError) else { throw error }
+            throw DataSourceStartupError(
+                datasource: name, backend: "valkey", host: url.host, port: url.port,
+                database: "\(url.database)", cause: String(describing: error), underlying: error)
         }
     }
 

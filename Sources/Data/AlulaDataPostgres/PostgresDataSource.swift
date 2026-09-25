@@ -225,8 +225,33 @@ public final class PostgresDataSource: DataSource, Sendable {
             ])
         } catch {
             await shutdown()
-            throw error
+            throw startupError(error)
         }
+    }
+
+    /// A startup failure worth printing: where the pool was dialling and what
+    /// came back, never the URL or the password. See `DataSourceStartupError`.
+    private func startupError(_ error: any Error) -> any Error {
+        guard !(error is CancellationError) else { return error }
+        let cause: String
+        if let psql = error as? PSQLError {
+            if let server = psql.serverInfo {
+                // The server's own words: SQLSTATE and message (for example
+                // "password authentication failed for user …") — no password.
+                cause = "the server refused: \(server[.message] ?? "")\(server[.sqlState].map { " (SQLSTATE \($0))" } ?? "")"
+            } else if let underlying = psql.underlying {
+                cause = "\(psql.code): \(underlying)"
+            } else {
+                cause = "\(psql.code)"
+            }
+        } else {
+            cause = String(describing: error)
+        }
+        return DataSourceStartupError(
+            datasource: name, backend: "postgres",
+            host: url?.host ?? "<configured directly>", port: url?.port ?? 5432,
+            database: url?.database ?? connectionConfiguration.database ?? "",
+            cause: cause, underlying: error)
     }
 
     /// Replaces broken connections as checkout/release discover them, until

@@ -54,7 +54,7 @@ enum TestDatabase {
         try DataSourceSettings(name: name, url: try requireURL(), poolSize: poolSize)
     }
 
-    private static func requireURL() throws -> String {
+    static func requireURL() throws -> String {
         guard let url else {
             throw TestDatabaseError.notConfigured
         }

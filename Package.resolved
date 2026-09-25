@@ -1,13 +1,13 @@
 {
-  "originHash" : "ddd207de8e593e541004fa2761301bc6453794ffb68da0fd25a36f31e0cab25c",
+  "originHash" : "e7b9f335e35fe588071cd1d47e675cb0fdbb85b9423dd240e781849c3f8fe538",
   "pins" : [
     {
       "identity" : "alula",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Alula-Framework/alula.git",
       "state" : {
-        "revision" : "99a0d2a441cf9d55bca0a2497303e103d65a32d2",
-        "version" : "0.38.0"
+        "revision" : "7b6b4c7818011114de76e19d1ccdd4d758488195",
+        "version" : "0.48.0"
       }
     },
     {

@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-09-25
+
+Requires alula 0.48.0.
+
+### Added
+
+- **A datasource that cannot start says why.** alula 0.48.0 prints a
+  startup failure's `StartupDiagnostic` rather than its reflected form,
+  which could carry secrets — and PostgresNIO's `PSQLError` describes
+  itself only as a generic "prevent accidental leakage" placeholder, so a
+  Postgres pool that failed to start printed nothing useful. Postgres and
+  Valkey pools now fail `start()` with `DataSourceStartupError`: the
+  datasource, host, port and database, and what came back — the network
+  error (`connection refused`, errno), or the server's message and SQLSTATE
+  (`28P01` for a wrong password). Never the URL or the password; tests
+  check both with a password that must not appear.
+
 ## [0.17.0] - 2026-09-25
 
 Requires Hangar 0.10.1, whose Postgres audit fixes — transactions that
