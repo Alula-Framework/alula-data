@@ -42,7 +42,7 @@ public enum DataSourceConfigKey {
 
     /// `datasource.<name>.replica.pool_size` — optional, default the primary's.
     public static func replicaPoolSize(datasource name: String) -> String {
-        key("replica.pool_size", datasource: name)
+        key("replica.pool-size", datasource: name)
     }
 
     /// `datasource.<name>.replica.fallback` — read from the primary when the
@@ -54,14 +54,14 @@ public enum DataSourceConfigKey {
     /// `datasource.<name>.pool_size` — optional, default
     /// `DataSourceSettings.defaultPoolSize`.
     public static func poolSize(datasource name: String) -> String {
-        key("pool_size", datasource: name)
+        key("pool-size", datasource: name)
     }
 
     /// `datasource.<name>.checkout_timeout_ms` — how long an async caller
     /// queues for a connection before giving up. Optional, default
     /// `DataSourceSettings.defaultCheckoutTimeout`.
     public static func checkoutTimeout(datasource name: String) -> String {
-        key("checkout_timeout_ms", datasource: name)
+        key("checkout-timeout-ms", datasource: name)
     }
 }
 
@@ -136,10 +136,10 @@ public struct DataSourceSettings: Sendable, Equatable {
     ) throws -> DataSourceSettings {
         let url: String = try configuration.get(DataSourceConfigKey.url(datasource: name))
         let poolSize = try configuration.getIfPresent(
-            DataSourceConfigKey.poolSize(datasource: name), as: Int.self
+            allowingSnakeCase: DataSourceConfigKey.poolSize(datasource: name), as: Int.self
         ) ?? defaultPoolSize
         let checkoutTimeout = try configuration.getIfPresent(
-            DataSourceConfigKey.checkoutTimeout(datasource: name), as: Int.self
+            allowingSnakeCase: DataSourceConfigKey.checkoutTimeout(datasource: name), as: Int.self
         ).map { Duration.milliseconds($0) } ?? defaultCheckoutTimeout
         return try DataSourceSettings(
             name: name, url: url, poolSize: poolSize, checkoutTimeout: checkoutTimeout)

@@ -79,14 +79,14 @@ The raw connection is available the same way, through
 express — `LISTEN`, `COPY`, server-side cursors.
 
 The module is one generic instantiation per named datasource, reading
-`datasource.<name>.url` / `pool_size` from Alula Config at freeze — a bad
+`datasource.<name>.url` / `pool-size` from Alula Config at freeze — a bad
 URL fails bootstrap, never the first query:
 
 ```yaml
 datasource:
   primary:
     url: "postgres://app:secret@localhost:5432/app?sslmode=prefer"
-    pool_size: 10
+    pool-size: 10
 ```
 
 ```swift
@@ -147,7 +147,7 @@ datasource:
     url: postgres://app@primary/db
     replica:
       url: postgres://app@replica/db
-      pool_size: 8          # default: the primary's
+      pool-size: 8          # default: the primary's
       fallback: true        # default: read from the primary if the replica can't serve
 ```
 
@@ -212,7 +212,7 @@ correct — a producer faster than its reader is slowed rather than buffered —
 and it means a reader at 20 KB/s holds a pooled connection for the whole
 download. Measured on a pool of four: four such readers, and
 `activeCheckouts` is 4, `availableConnections` 0, with every other request
-queueing behind them for `checkout_timeout_ms` and then failing. An
+queueing behind them for `checkout-timeout-ms` and then failing. An
 unauthenticated client that reads slowly is a denial of service against every
 other database user in the process — the slowloris shape, pointed at the
 pool rather than at the socket.
@@ -223,7 +223,7 @@ Three ways out, in the order they are usually worth reaching for:
    fetch the next. The export takes more round trips and holds nothing
    between them.
 2. **Give exports their own pool.** A second named datasource against the
-   same database (`datasource.exports.pool_size: 2`) bounds the damage to
+   same database (`datasource.exports.pool-size: 2`) bounds the damage to
    itself.
 3. **Bound the response.** A write timeout on the streamed body — the same
    idea as `alula.channels.write-timeout-seconds` — turns an indefinite hold
@@ -266,11 +266,11 @@ path production uses — so the migrations are exercised on every run.
 
 | # | Delta | Why |
 |---|---|---|
-| P1 | This package owns a small fixed-size pool (`PostgresDataSource`) instead of leasing from `PostgresClient` | The sketch called `PostgresClient.leaseConnection()`, which is **private**; the modern client only lends connections inside async closures. The pool is deliberately thin — eager dial at service start, a `Mutex` free list, checkout that queues up to `checkout_timeout_ms`, and a replacement loop — and everything protocol-level stays PostgresNIO's. `PostgresClient` is still used where its shape fits: the migrate wiring, and the Alula-free binding product. |
+| P1 | This package owns a small fixed-size pool (`PostgresDataSource`) instead of leasing from `PostgresClient` | The sketch called `PostgresClient.leaseConnection()`, which is **private**; the modern client only lends connections inside async closures. The pool is deliberately thin — eager dial at service start, a `Mutex` free list, checkout that queues up to `checkout-timeout-ms`, and a replacement loop — and everything protocol-level stays PostgresNIO's. `PostgresClient` is still used where its shape fits: the migrate wiring, and the Alula-free binding product. |
 | P2 | A connection is leased for **one operation**, not for a request | `withRepo`/`withConnection` bracket the lease. The alternative — a `.scoped` connection held for the whole request — pinned a connection for as long as the scope lived, which for a WebSocket upgrade meant one connection per open browser tab. Per-operation leasing makes the hold as short as the work. |
 | P3 | Transactions are Hangar's `repo.transaction { }`, not an annotation | A `Repo` fixes `inTransaction` at construction, so an ambient repo built before a unit of work always believed it was outside one — it emitted a literal `COMMIT` when nested, ending the enclosing transaction and making writes durable that the caller meant to roll back. Constructing the repo per operation removes the state that could go stale, and Hangar's own bracket tracks depth and emits savepoints. |
-| P4 | A connection returned mid-transaction is dropped, not reused | Every path through `repo.transaction` pairs begin with commit or rollback, but a torn task could still return a connection with a transaction open, and reusing it would leak that state into the next borrower. `DISCARD ALL` is what catches it: Postgres refuses the statement inside a transaction block, and a connection whose reset fails is closed and replaced rather than repooled. This is why `reset_on_release` defaults to on — turning it off gives up this guard as well as the session-state one. (The pool also carries an explicit rollback-on-release path, unreachable since transactions moved into Hangar, which does not tell the pool when it opens one.) |
-| P5 | `reset_on_release` issues `DISCARD ALL` between borrowers | Session state — `SET`, prepared statements, temp tables, `LISTEN` registrations — outlives a lease otherwise, and the next borrower inherits it. On by default; turn it off only for a pool whose callers are known to leave nothing behind. |
+| P4 | A connection returned mid-transaction is dropped, not reused | Every path through `repo.transaction` pairs begin with commit or rollback, but a torn task could still return a connection with a transaction open, and reusing it would leak that state into the next borrower. `DISCARD ALL` is what catches it: Postgres refuses the statement inside a transaction block, and a connection whose reset fails is closed and replaced rather than repooled. This is why `reset-on-release` defaults to on — turning it off gives up this guard as well as the session-state one. (The pool also carries an explicit rollback-on-release path, unreachable since transactions moved into Hangar, which does not tell the pool when it opens one.) |
+| P5 | `reset-on-release` issues `DISCARD ALL` between borrowers | Session state — `SET`, prepared statements, temp tables, `LISTEN` registrations — outlives a lease otherwise, and the next borrower inherits it. On by default; turn it off only for a pool whose callers are known to leave nothing behind. |
 | P6 | One pool per application, and `@Inject var pool: PostgresDataSource` finds it | This row used to describe qualified versus unqualified *registration*, which was container vocabulary and has not been how this works since alula 0.17.0. Composition wires by type: the datasource module provides its pool as a value and anything injecting `PostgresDataSource` receives it, with no name involved. The generic parameter (`<Analytics>`) names the configuration key the pool is built from, not the type it is provided as — so two instantiations are two pools. Both provide `PostgresDataSource`, which the application resolves with `defaultProviders` and `@Inject(from:)` — see `data-core.md`. Requires alula 0.21.0; before it the two collapsed into one binding. |
 
 Toolchain/upstream deltas (the `.eq()` spelling, the parameter-pack

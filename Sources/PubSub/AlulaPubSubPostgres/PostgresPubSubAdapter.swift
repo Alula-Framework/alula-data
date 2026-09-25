@@ -163,14 +163,14 @@ public struct AlulaPubSubPostgresModule: AlulaModule {
 
     public init(configuration: Configuration, dataSource: PostgresDataSource) throws {
         let channel =
-            try configuration.getIfPresent("pubsub.postgres.channel", as: String.self) ?? "alula_pubsub"
+            try configuration.getIfPresent(allowingSnakeCase: "pubsub.postgres.channel", as: String.self) ?? "alula_pubsub"
         guard !channel.isEmpty, channel.utf8.count <= 63,
             channel.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" })
         else {
             throw PostgresPubSubConfigurationError(
                 "pubsub.postgres.channel must be 1–63 letters, digits or underscores; it is \(channel)")
         }
-        let retry = try configuration.getIfPresent("pubsub.postgres.retry-delay-ms", as: Int.self) ?? 1000
+        let retry = try configuration.getIfPresent(allowingSnakeCase: "pubsub.postgres.retry-delay-ms", as: Int.self) ?? 1000
         let adapter = PostgresPubSubAdapter(
             dataSource: dataSource, channel: channel, retryDelay: .milliseconds(max(retry, 10)))
         self.postgres = adapter

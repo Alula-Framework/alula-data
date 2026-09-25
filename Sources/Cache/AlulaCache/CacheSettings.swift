@@ -13,7 +13,7 @@ public enum CacheConfigKey {
     public static let root = "cache"
     /// `cache.default_ttl` — integer seconds; the fallback when neither the
     /// annotation nor the namespace names a TTL. 0 means "no default".
-    public static let defaultTTL = "cache.default_ttl"
+    public static let defaultTTL = "cache.default-ttl"
     /// `cache.namespaces.<name>` — integer seconds for one namespace.
     ///
     /// `0` here means "this namespace names no TTL of its own", so
@@ -26,7 +26,7 @@ public enum CacheConfigKey {
         "cache.namespaces.\(namespace)"
     }
     /// `cache.memory.max_entries` — the in-memory adapter's LRU bound.
-    public static let memoryMaxEntries = "cache.memory.max_entries"
+    public static let memoryMaxEntries = "cache.memory.max-entries"
 }
 
 /// Semantic rejections of values that were present and readable — distinct
@@ -69,7 +69,7 @@ public final class CacheTTLPolicy: Sendable {
         self.configuration = configuration
         self.logger = logger
         if let configuration,
-            let seconds = try configuration.getIfPresent(CacheConfigKey.defaultTTL, as: Int.self)
+            let seconds = try configuration.getIfPresent(allowingSnakeCase: CacheConfigKey.defaultTTL, as: Int.self)
         {
             guard seconds >= 0 else { throw CacheConfigurationError.negativeDefaultTTL(seconds) }
             self.defaultTTL = seconds == 0 ? nil : .seconds(seconds)
@@ -97,7 +97,7 @@ public final class CacheTTLPolicy: Sendable {
         guard let configuration else { return nil }
         let key = CacheConfigKey.namespaceTTL(namespace)
         do {
-            guard let seconds = try configuration.getIfPresent(key, as: Int.self) else { return nil }
+            guard let seconds = try configuration.getIfPresent(allowingSnakeCase: key, as: Int.self) else { return nil }
             // Note that `0` here is not what `0` means at `cache.default_ttl`.
             // There it means "no default, entries never expire"; here it falls
             // through to the default, because "this namespace has no TTL of its

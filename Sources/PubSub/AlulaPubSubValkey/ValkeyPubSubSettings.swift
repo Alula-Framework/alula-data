@@ -16,16 +16,16 @@ public enum ValkeyPubSubConfigKey {
     public static let channel = "pubsub.valkey.channel"
     /// `pubsub.valkey.command_timeout_ms` — bounds a command already
     /// executing on a leased connection. Optional.
-    public static let commandTimeoutMilliseconds = "pubsub.valkey.command_timeout_ms"
+    public static let commandTimeoutMilliseconds = "pubsub.valkey.command-timeout-ms"
     /// `pubsub.valkey.unreachable_after_ms` — the other half of the timeout
     /// story, and the one that matters when the server is down: how long the
     /// pool may keep trying to connect before failing operations immediately
     /// rather than queueing them behind a dial that will not complete.
     /// Optional; defaults to the command timeout.
-    public static let unreachableAfterMilliseconds = "pubsub.valkey.unreachable_after_ms"
+    public static let unreachableAfterMilliseconds = "pubsub.valkey.unreachable-after-ms"
     /// `pubsub.valkey.retry_delay_ms` — the first delay before re-subscribing
     /// after the connection drops. It grows and is jittered from there.
-    public static let retryDelayMilliseconds = "pubsub.valkey.retry_delay_ms"
+    public static let retryDelayMilliseconds = "pubsub.valkey.retry-delay-ms"
 }
 
 /// Where the adapter connects, and on which channel.
@@ -117,7 +117,7 @@ public struct ValkeyPubSubSettings: Sendable, Equatable {
     /// Reads `pubsub.valkey.*`.
     public static func load(from configuration: Configuration) throws -> ValkeyPubSubSettings {
         guard let raw = try configuration.getIfPresent(
-            ValkeyPubSubConfigKey.url, as: String.self)
+            allowingSnakeCase: ValkeyPubSubConfigKey.url, as: String.self)
         else {
             throw ValkeyPubSubConfigurationError.missingURL
         }
@@ -139,13 +139,13 @@ public struct ValkeyPubSubSettings: Sendable, Equatable {
                 ValkeyPubSubConfigKey.retryDelayMilliseconds, from: configuration)
                 ?? defaultRetryDelay,
             channel: try configuration.getIfPresent(
-                ValkeyPubSubConfigKey.channel, as: String.self) ?? defaultChannel)
+                allowingSnakeCase: ValkeyPubSubConfigKey.channel, as: String.self) ?? defaultChannel)
     }
 
     private static func positiveDuration(
         _ key: String, from configuration: Configuration
     ) throws -> Duration? {
-        guard let milliseconds = try configuration.getIfPresent(key, as: Int.self) else {
+        guard let milliseconds = try configuration.getIfPresent(allowingSnakeCase: key, as: Int.self) else {
             return nil
         }
         guard milliseconds > 0 else {

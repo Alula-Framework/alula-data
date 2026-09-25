@@ -47,7 +47,7 @@ public final class InMemoryDataModule<Name: DataSourceName>: AlulaModule {
         let name = Name.name
         let poolSize =
             try configuration.getIfPresent(
-                DataSourceConfigKey.poolSize(datasource: name), as: Int.self
+                allowingSnakeCase: DataSourceConfigKey.poolSize(datasource: name), as: Int.self
             ) ?? Self.defaultPoolSize
         guard poolSize >= 1 else {
             throw DataSourceConfigurationError.invalidPoolSize(datasource: name, value: poolSize)

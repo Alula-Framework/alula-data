@@ -14,7 +14,7 @@ public enum ValkeyCacheConfigKey {
     /// `cache.valkey.command_timeout_ms` — short operation timeout,
     /// bounding a command that is already executing on a leased
     /// connection. Integer milliseconds; optional.
-    public static let commandTimeoutMilliseconds = "cache.valkey.command_timeout_ms"
+    public static let commandTimeoutMilliseconds = "cache.valkey.command-timeout-ms"
     /// `cache.valkey.unreachable_after_ms` — the other half of the timeout
     /// story, and the one that actually matters when the server is
     /// down: how long the pool may keep trying to establish a connection
@@ -22,15 +22,15 @@ public enum ValkeyCacheConfigKey {
     /// immediately. Maps to the driver's
     /// `connectionPool.circuitBreakerTripAfter`. Defaults to the command
     /// timeout, so one knob covers both phases unless you split them.
-    public static let unreachableAfterMilliseconds = "cache.valkey.unreachable_after_ms"
+    public static let unreachableAfterMilliseconds = "cache.valkey.unreachable-after-ms"
     /// `cache.valkey.pool_size` — maximum connections. The ceiling on
     /// concurrent in-flight cache commands; lease requests beyond it queue.
-    public static let poolSize = "cache.valkey.pool_size"
+    public static let poolSize = "cache.valkey.pool-size"
     /// `cache.valkey.min_connections` — connections kept warm, so a cache
     /// read on a cold path does not pay a dial and the pool discovers an
     /// unreachable server at startup rather than on a request. Defaults
     /// to 1; 0 restores the driver's lazy behavior.
-    public static let minimumConnections = "cache.valkey.min_connections"
+    public static let minimumConnections = "cache.valkey.min-connections"
 }
 
 /// Loaded, validated settings — read at the module factory, which runs at
@@ -85,13 +85,13 @@ public struct ValkeyCacheSettings: Sendable, Equatable {
             ValkeyCacheConfigKey.unreachableAfterMilliseconds, from: configuration)
 
         let poolSize =
-            try configuration.getIfPresent(ValkeyCacheConfigKey.poolSize, as: Int.self)
+            try configuration.getIfPresent(allowingSnakeCase: ValkeyCacheConfigKey.poolSize, as: Int.self)
             ?? Self.defaultPoolSize
         guard poolSize > 0 else {
             throw ValkeyCacheConfigurationError.invalidPoolSize(poolSize)
         }
         let minimumConnections =
-            try configuration.getIfPresent(ValkeyCacheConfigKey.minimumConnections, as: Int.self)
+            try configuration.getIfPresent(allowingSnakeCase: ValkeyCacheConfigKey.minimumConnections, as: Int.self)
             ?? min(Self.defaultMinimumConnections, poolSize)
         guard minimumConnections >= 0, minimumConnections <= poolSize else {
             throw ValkeyCacheConfigurationError.invalidMinimumConnections(
@@ -110,7 +110,7 @@ public struct ValkeyCacheSettings: Sendable, Equatable {
     private static func positiveDuration(
         _ key: String, from configuration: Configuration
     ) throws -> Duration? {
-        guard let milliseconds = try configuration.getIfPresent(key, as: Int.self) else {
+        guard let milliseconds = try configuration.getIfPresent(allowingSnakeCase: key, as: Int.self) else {
             return nil
         }
         guard milliseconds > 0 else {

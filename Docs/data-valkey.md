@@ -45,7 +45,7 @@ dial, on the reasoning that the next connection close would re-trigger
 replacement. That holds while some connections survive; once an outage
 retires all of them there are no more closes, so nothing re-triggered
 anything. The pool sat at zero established, answered `poolExhausted`, and
-blamed the operator's `pool_size` until the process was restarted. A blip
+blamed the operator's `pool-size` until the process was restarted. A blip
 became permanent.
 
 `ping()` is the probe Actuator's readiness check runs (through the module's `healthChecks`). Note that `shutdown()` is what
@@ -79,9 +79,9 @@ await Alula.run(configuration: try .load(), modules: [
 datasource:
   primary:                           # the key is the datasource NAME, not the store
     url: "valkey://localhost:6379"   # or redis:// — same client, same behavior
-    pool_size: 10
-    checkout_timeout_ms: 5000        # how long a caller queues before failing
-    reset_on_release: true           # clear session state between scopes
+    pool-size: 10
+    checkout-timeout-ms: 5000        # how long a caller queues before failing
+    reset-on-release: true           # clear session state between scopes
 ```
 
 The key under `datasource:` is `Name.name` from the module's generic parameter
@@ -223,7 +223,7 @@ refinement of) the design doc, in its spirit.
 
   So the three that were missing landed together. A released connection now
   gets `DISCARD`/`UNWATCH`/`SELECT <db>` in one pipelined round trip, under
-  the same `reset_on_release` key Postgres uses — a Valkey connection is a
+  the same `reset-on-release` key Postgres uses — a Valkey connection is a
   *session*, and a scope that ran `SELECT 5` through the raw command hatch was
   handing the next scope the wrong database. `ping()` reports alive when the
   pool is merely saturated and dead when it has no established connections at

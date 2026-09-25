@@ -57,11 +57,11 @@ final class PricingService {
 
 ```yaml
 cache:
-  default_ttl: 300          # integer seconds; 0 = no default
+  default-ttl: 300          # integer seconds; 0 = no default
   namespaces:
     prices: 900             # lowercase/digits/underscores only
   memory:
-    max_entries: 10000      # the in-memory adapter's LRU bound
+    max-entries: 10000      # the in-memory adapter's LRU bound
 ```
 
 Key-contributing parameter types conform explicitly:

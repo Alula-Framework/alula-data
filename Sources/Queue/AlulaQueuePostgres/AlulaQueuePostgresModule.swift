@@ -27,7 +27,7 @@ public struct AlulaQueuePostgresModule: AlulaModule {
 
     public init(configuration: Configuration, dataSource: PostgresDataSource) throws {
         let table =
-            try configuration.getIfPresent("queue.postgres.table", as: String.self) ?? "alula_jobs"
+            try configuration.getIfPresent(allowingSnakeCase: "queue.postgres.table", as: String.self) ?? "alula_jobs"
         let store = PostgresQueueStore(dataSource: dataSource, table: table)
         self.postgresQueueStore = store
         self.store = store

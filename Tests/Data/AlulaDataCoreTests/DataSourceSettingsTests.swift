@@ -9,7 +9,7 @@ struct DataSourceSettingsTests {
     @Test("the convention keys spell datasource.<name>.<suffix>")
     func keySpelling() {
         #expect(DataSourceConfigKey.url(datasource: "primary") == "datasource.primary.url")
-        #expect(DataSourceConfigKey.poolSize(datasource: "analytics") == "datasource.analytics.pool_size")
+        #expect(DataSourceConfigKey.poolSize(datasource: "analytics") == "datasource.analytics.pool-size")
         #expect(DataSourceConfigKey.key("tls.mode", datasource: "primary") == "datasource.primary.tls.mode")
     }
 
@@ -30,7 +30,7 @@ struct DataSourceSettingsTests {
             "datasource.primary.url": "postgres://localhost:5432/app",
             "datasource.primary.pool_size": "10",
             "datasource.analytics.url": "postgres://localhost:5432/warehouse",
-            "datasource.analytics.pool_size": "4",
+            "datasource.analytics.pool-size": "4",
         ])
         let primary = try DataSourceSettings.load(name: "primary", from: configuration)
         let analytics = try DataSourceSettings.load(name: "analytics", from: configuration)

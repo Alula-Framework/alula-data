@@ -59,16 +59,16 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
         // to happen.
         let reset =
             try configuration.getIfPresent(
-                "datasource.\(name).reset_on_release", as: Bool.self) ?? true
+                allowingSnakeCase: "datasource.\(name).reset-on-release", as: Bool.self) ?? true
         let dataSource = try PostgresDataSource(settings: settings, resetOnRelease: reset)
         self.dataSource = dataSource
         if let replicaURL = try configuration.getIfPresent(
-            DataSourceConfigKey.replicaURL(datasource: name), as: String.self)
+            allowingSnakeCase: DataSourceConfigKey.replicaURL(datasource: name), as: String.self)
         {
             let replicaSettings = try DataSourceSettings(
                 name: "\(name)-replica", url: replicaURL,
                 poolSize: try configuration.getIfPresent(
-                    DataSourceConfigKey.replicaPoolSize(datasource: name), as: Int.self)
+                    allowingSnakeCase: DataSourceConfigKey.replicaPoolSize(datasource: name), as: Int.self)
                     ?? settings.poolSize,
                 checkoutTimeout: settings.checkoutTimeout)
             let replica = try PostgresDataSource(settings: replicaSettings, resetOnRelease: reset)
@@ -76,7 +76,7 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
                 replica: ReplicaAttachment(
                     pool: replica,
                     fallbackToPrimary: try configuration.getIfPresent(
-                        DataSourceConfigKey.replicaFallback(datasource: name), as: Bool.self)
+                        allowingSnakeCase: DataSourceConfigKey.replicaFallback(datasource: name), as: Bool.self)
                         ?? true,
                     logger: Logger(label: "alula.data.postgres.\(name)")))
         }

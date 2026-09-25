@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-09-25
+
+### Changed
+
+- **Configuration keys are kebab-case, like Alula's.** alula-data's keys were
+  snake_case — `datasource.primary.pool_size`, `cache.valkey.command_timeout_ms`
+  — so one application's `alula.yaml` mixed two conventions by package (the
+  alula-data half of Relay #33). They are now `pool-size`,
+  `checkout-timeout-ms`, `reset-on-release`, `replica.pool-size`,
+  `cache.default-ttl`, `cache.memory.max-entries`, `cache.valkey.*` and
+  `pubsub.valkey.*` in kebab-case. **Every snake_case spelling is still read**;
+  the kebab-case one wins when both are set, and the docs show kebab-case.
+  `DataSourceConfigKey`'s functions return the new spellings.
+
 ## [0.19.1] - 2026-09-25
 
 ### Fixed

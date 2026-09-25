@@ -77,21 +77,21 @@ public struct ValkeyRateLimitSettings: Sendable, Equatable {
             ValkeyRateLimitConfigKey.unreachableAfter, from: configuration)
 
         let poolSize =
-            try configuration.getIfPresent(ValkeyRateLimitConfigKey.poolSize, as: Int.self)
+            try configuration.getIfPresent(allowingSnakeCase: ValkeyRateLimitConfigKey.poolSize, as: Int.self)
             ?? Self.defaultPoolSize
         guard poolSize > 0 else {
             throw ValkeyRateLimitConfigurationError.invalidPoolSize(poolSize)
         }
         let minimumConnections =
             try configuration.getIfPresent(
-                ValkeyRateLimitConfigKey.minimumConnections, as: Int.self)
+                allowingSnakeCase: ValkeyRateLimitConfigKey.minimumConnections, as: Int.self)
             ?? min(Self.defaultMinimumConnections, poolSize)
         guard minimumConnections >= 0, minimumConnections <= poolSize else {
             throw ValkeyRateLimitConfigurationError.invalidMinimumConnections(
                 minimumConnections, poolSize: poolSize)
         }
         let keyPrefix =
-            try configuration.getIfPresent(ValkeyRateLimitConfigKey.keyPrefix, as: String.self)
+            try configuration.getIfPresent(allowingSnakeCase: ValkeyRateLimitConfigKey.keyPrefix, as: String.self)
             ?? Self.defaultKeyPrefix
 
         return ValkeyRateLimitSettings(
@@ -106,7 +106,7 @@ public struct ValkeyRateLimitSettings: Sendable, Equatable {
     private static func positiveDuration(
         _ key: String, from configuration: Configuration
     ) throws -> Duration? {
-        guard let duration = try configuration.getIfPresent(key, as: Duration.self) else {
+        guard let duration = try configuration.getIfPresent(allowingSnakeCase: key, as: Duration.self) else {
             return nil
         }
         guard duration > .zero else {

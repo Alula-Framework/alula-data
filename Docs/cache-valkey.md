@@ -61,17 +61,17 @@ try await Alula.run(
 
 ```yaml
 cache:
-  default_ttl: 300
+  default-ttl: 300
   valkey:
     url: "valkey://localhost:6379"   # or redis:// — same client, same behavior
-    command_timeout_ms: 250          # bounds a command already executing (default 250)
-    unreachable_after_ms: 250        # bounds obtaining a connection; defaults to the above
-    pool_size: 20                    # ceiling on concurrent in-flight commands
-    min_connections: 1               # kept warm; 0 restores the driver's lazy dial
+    command-timeout-ms: 250          # bounds a command already executing (default 250)
+    unreachable-after-ms: 250        # bounds obtaining a connection; defaults to the above
+    pool-size: 20                    # ceiling on concurrent in-flight commands
+    min-connections: 1               # kept warm; 0 restores the driver's lazy dial
 ```
 
 Both timeout keys matter and they cover different phases — see delta CV1
-below for why setting only `command_timeout_ms` leaves a 60-second hang on
+below for why setting only `command-timeout-ms` leaves a 60-second hang on
 the table.
 
 ## Running the tests
@@ -104,9 +104,9 @@ The suites `FLUSHDB` between tests — point them at throwaway servers only.
   | Driver defaults + `commandTimeout: 250ms` | **67 s** | — |
   | `circuitBreakerTripAfter: 250ms` | **~380 ms** | **~0.1 ms** |
 
-  So this adapter configures **both** phases: `command_timeout_ms` →
-  `commandTimeout`, and `unreachable_after_ms` (defaulting to the same
-  value) → `circuitBreakerTripAfter`. `min_connections` defaults to 1 so
+  So this adapter configures **both** phases: `command-timeout-ms` →
+  `commandTimeout`, and `unreachable-after-ms` (defaulting to the same
+  value) → `circuitBreakerTripAfter`. `min-connections` defaults to 1 so
   the pool discovers an unreachable server at service start rather than on
   a request, keeping the dial off the request path entirely.
 
@@ -123,7 +123,7 @@ The suites `FLUSHDB` between tests — point them at throwaway servers only.
   than refusing them, each dial burns NIO's 10-second `connectTimeout`,
   which valkey-swift does not expose (`ValkeyConnectionFactory`'s
   `customHandler` hook is `package`-scoped), so the breaker cannot trip
-  before ~20 s. `min_connections: 1` moves that cost to startup for a
+  before ~20 s. `min-connections: 1` moves that cost to startup for a
   server that is already unreachable, but a mid-flight blackhole can still
   stall calls. The fix belongs upstream — a `connectTimeout` on
   `ValkeyConnectionConfiguration` — not in a per-call guard here.

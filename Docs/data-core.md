@@ -82,10 +82,10 @@ Named datasources are module *type* instantiations, exactly like
 datasource:
   primary:
     url: "postgres://localhost:5432/app"
-    pool_size: 10
+    pool-size: 10
   analytics:
     url: "postgres://localhost:5432/warehouse"
-    pool_size: 4
+    pool-size: 4
 ```
 
 ```swift
@@ -158,8 +158,8 @@ let repo = UserRepository(pool: module.dataSource)
 
 ## What a pool size actually means
 
-**`pool_size` is a queue depth with a timeout, not a hard ceiling.** A caller
-that can await queues for up to `datasource.<name>.checkout_timeout_ms`
+**`pool-size` is a queue depth with a timeout, not a hard ceiling.** A caller
+that can await queues for up to `datasource.<name>.checkout-timeout-ms`
 (default 5 seconds) and fails with `DataSourceError.poolExhausted` only if
 nothing comes back in that time.
 
@@ -168,7 +168,7 @@ waiting to time out" — and that *was* true, and was a bug. `checkout()` is
 synchronous by contract, because Alula Core's transaction coordinator begins
 transactions synchronously and a pool that parked that caller would deadlock
 it. But "the synchronous primitive cannot wait" was read as "the seam does not
-queue", and so the (pool_size + 1)th concurrent request returned 500 instead of
+queue", and so the (pool-size + 1)th concurrent request returned 500 instead of
 waiting a few milliseconds for the one ahead of it. Found by an application
 test that created eight issues at once against a pool of four: four succeeded,
 four failed immediately.
@@ -282,8 +282,8 @@ state; nil-ness is exclusively `validateRequired`'s job.
 | D4 | ~~`register(dataSource:)` has instance *and* factory forms, plus `name:`~~ | **Superseded by the container deletion.** There is no container to register into. The module reads `Configuration` in its `init`, builds the pool there (a bad config fails composition, not the first query), and *provides* it — and a `DataSourceLiveness` probe — as stored values the composition root wires by type. |
 | D5 | `DataSourceLiveness` value per datasource | The requirement was that stores "provide a liveness check surfaced by Actuator", with no mechanism named. A `DataSourceLiveness` value wrapping `ping()`, provided by the module, is that mechanism; each datasource module contributes it as a `HealthCheck` in its `healthChecks` property, and the composition root collects those for Actuator's readiness probe, so Actuator needs zero store knowledge. (Until 0.12.0 nothing collected it: the probe existed and a dead store still reported ready.) |
 | D6 | ~~`TestContainer` duplicated from `AlulaWebTesting`~~ | **Gone.** The container deletion removed both `TestContainer`s. A data test builds the module and reads its `dataSource` directly — no container to duplicate. |
-| D7 | `InMemoryDataModule` requires no `url` key | The in-memory store is "backed by nothing"; requiring a URL it would ignore breaks the `try InMemoryDataModule()` one-liner. `pool_size` is honored when present (default 4). Real store modules load `DataSourceSettings`, whose `url` is required. |
-| D8 | `checkout(waitingUpTo:)` joins the contract; `withConnection` is defined on it, and `ConnectionWaiters` is shared | D1's synchronous checkout describes a *primitive*, and it got read as a policy: `pool_size` became a hard concurrency ceiling and a burst past it failed rather than queueing for a few milliseconds. A caller that can await should queue, so the async checkout is a protocol requirement with a polling default — every store queues — that a pool with a native wake path overrides. The parked-caller state machine lives in core rather than in each driver: the two pools here had already drifted apart on four separate fixes (outage backoff, ping under saturation, session reset, queueing itself), and a second copy of this would have been the fifth. |
+| D7 | `InMemoryDataModule` requires no `url` key | The in-memory store is "backed by nothing"; requiring a URL it would ignore breaks the `try InMemoryDataModule()` one-liner. `pool-size` is honored when present (default 4). Real store modules load `DataSourceSettings`, whose `url` is required. |
+| D8 | `checkout(waitingUpTo:)` joins the contract; `withConnection` is defined on it, and `ConnectionWaiters` is shared | D1's synchronous checkout describes a *primitive*, and it got read as a policy: `pool-size` became a hard concurrency ceiling and a burst past it failed rather than queueing for a few milliseconds. A caller that can await should queue, so the async checkout is a protocol requirement with a polling default — every store queues — that a pool with a native wake path overrides. The parked-caller state machine lives in core rather than in each driver: the two pools here had already drifted apart on four separate fixes (outage backoff, ping under saturation, session reset, queueing itself), and a second copy of this would have been the fifth. |
 
 Changeset decisions:
 

@@ -60,7 +60,7 @@ public struct AlulaCacheModule: AlulaModule {
         // supplied, and the value the `InMemoryCache` registration serves
         // either way.
         let maxEntries =
-            try configuration.getIfPresent(CacheConfigKey.memoryMaxEntries, as: Int.self)
+            try configuration.getIfPresent(allowingSnakeCase: CacheConfigKey.memoryMaxEntries, as: Int.self)
             ?? InMemoryCache.defaultMaxEntries
         guard maxEntries > 0 else {
             throw CacheConfigurationError.invalidMaxEntries(maxEntries)

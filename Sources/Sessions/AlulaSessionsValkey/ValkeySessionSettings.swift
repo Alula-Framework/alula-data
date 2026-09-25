@@ -78,13 +78,13 @@ public struct ValkeySessionSettings: Sendable, Equatable {
             ValkeySessionConfigKey.unreachableAfter, from: configuration)
 
         let poolSize =
-            try configuration.getIfPresent(ValkeySessionConfigKey.poolSize, as: Int.self)
+            try configuration.getIfPresent(allowingSnakeCase: ValkeySessionConfigKey.poolSize, as: Int.self)
             ?? Self.defaultPoolSize
         guard poolSize > 0 else {
             throw ValkeySessionConfigurationError.invalidPoolSize(poolSize)
         }
         let minimumConnections =
-            try configuration.getIfPresent(ValkeySessionConfigKey.minimumConnections, as: Int.self)
+            try configuration.getIfPresent(allowingSnakeCase: ValkeySessionConfigKey.minimumConnections, as: Int.self)
             ?? min(Self.defaultMinimumConnections, poolSize)
         guard minimumConnections >= 0, minimumConnections <= poolSize else {
             throw ValkeySessionConfigurationError.invalidMinimumConnections(
@@ -102,7 +102,7 @@ public struct ValkeySessionSettings: Sendable, Equatable {
     private static func positiveDuration(
         _ key: String, from configuration: Configuration
     ) throws -> Duration? {
-        guard let duration = try configuration.getIfPresent(key, as: Duration.self) else {
+        guard let duration = try configuration.getIfPresent(allowingSnakeCase: key, as: Duration.self) else {
             return nil
         }
         guard duration > .zero else {

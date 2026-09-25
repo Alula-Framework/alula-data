@@ -54,7 +54,7 @@ public final class ValkeyDataModule<Name: DataSourceName>: AlulaModule {
         // `SELECT 5` across scopes reads the wrong database.
         let reset =
             try configuration.getIfPresent(
-                "datasource.\(name).reset_on_release", as: Bool.self) ?? true
+                allowingSnakeCase: "datasource.\(name).reset-on-release", as: Bool.self) ?? true
         let dataSource = try ValkeyDataSource(settings: settings, resetOnRelease: reset)
         self.dataSource = dataSource
         self.liveness = DataSourceLiveness(datasourceName: name) { [dataSource] in
