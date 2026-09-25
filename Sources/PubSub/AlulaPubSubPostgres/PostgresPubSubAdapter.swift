@@ -124,7 +124,7 @@ public final class PostgresPubSubAdapter: DistributedPubSubAdapter {
                 if !announcedLoss {
                     logger.warning(
                         "pubsub listener lost its connection; messages from other nodes are missed until it reconnects",
-                        metadata: ["channel": "\(channel)", "error": "\(error)"])
+                        metadata: ["channel": "\(channel)", "error": "\(loggableFailure(error))"])
                     announcedLoss = true
                 }
             }

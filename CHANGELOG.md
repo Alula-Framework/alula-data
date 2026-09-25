@@ -13,6 +13,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   permits back. It now throws `RateLimitStoreError`, as alula's in-memory store
   does since alula 0.52.0, whose `RateLimiting` middleware also charges a
   negative computed cost as one permit.
+- **Postgres warnings say why a connection failed** (Relay #34). A
+  reconnect, a failed session reset, a leaked-transaction rollback, a
+  stopped read replica and a lost PubSub listener logged PostgresNIO's
+  deliberately opaque description. They now log what is safe: a server
+  error's SQLSTATE and kind (Hangar's `DatabaseError` description) with the
+  meaning of the SQLSTATEs a connection meets — `authentication failed`,
+  `the database is starting up`, `too many connections` — or, for a
+  connection failure, PostgresNIO's error code and the system error.
+- **A startup failure names the port that was configured.** A data source
+  built from a `PostgresConnection.Configuration` reported port 5432 and
+  host `<configured directly>` whatever it had been given.
 
 ## [0.19.0] - 2026-09-25
 

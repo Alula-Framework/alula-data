@@ -220,7 +220,7 @@ public final class PostgresDataSource: DataSource, Sendable {
             }
             logger.info("postgres pool started", metadata: [
                 "datasource": "\(name)", "pool_size": "\(poolSize)",
-                "host": "\(url?.host ?? "<configured directly>")",
+                "host": "\(url?.host ?? connectionConfiguration.host ?? connectionConfiguration.unixSocketPath ?? "<unknown>")",
                 "database": "\(url?.database ?? connectionConfiguration.database ?? "")",
             ])
         } catch {
@@ -249,7 +249,11 @@ public final class PostgresDataSource: DataSource, Sendable {
         }
         return DataSourceStartupError(
             datasource: name, backend: "postgres",
-            host: url?.host ?? "<configured directly>", port: url?.port ?? 5432,
+            // A source built from a PostgresConnection.Configuration has no
+            // URL, and reporting 5432 for it named a port nobody configured.
+            host: url?.host ?? connectionConfiguration.host ?? connectionConfiguration.unixSocketPath
+                ?? "<unknown>",
+            port: url?.port ?? connectionConfiguration.port ?? 5432,
             database: url?.database ?? connectionConfiguration.database ?? "",
             cause: cause, underlying: error)
     }
@@ -424,7 +428,7 @@ public final class PostgresDataSource: DataSource, Sendable {
                     "failed to replace broken postgres connection; retrying",
                     metadata: [
                         "datasource": "\(name)",
-                        "error": "\(error)",
+                        "error": "\(loggableFailure(error))",
                         "attempt": "\(consecutiveFailures)",
                         "retry-in": "\(backoff)",
                     ])
@@ -599,7 +603,7 @@ public final class PostgresDataSource: DataSource, Sendable {
                     }
                 case .failure(let error):
                     logger.warning("rollback of leaked transaction failed; dropping connection", metadata: [
-                        "datasource": "\(name)", "error": "\(error)",
+                        "datasource": "\(name)", "error": "\(loggableFailure(error))",
                     ])
                     state.withLock {
                         $0.pendingReturns -= 1
@@ -650,7 +654,7 @@ public final class PostgresDataSource: DataSource, Sendable {
             case .failure(let error):
                 logger.warning(
                     "session reset failed; dropping the connection rather than reusing it",
-                    metadata: ["datasource": "\(name)", "error": "\(error)"]
+                    metadata: ["datasource": "\(name)", "error": "\(loggableFailure(error))"]
                 )
                 state.withLock {
                     $0.pendingReturns -= 1

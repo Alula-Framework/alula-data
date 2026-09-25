@@ -139,7 +139,7 @@ struct PostgresPoolService: Service {
                     if Task.isCancelled { return }
                     Logger(label: "alula.data.postgres").error(
                         "read replica pool stopped; reads use the primary",
-                        metadata: ["datasource": "\(replica.name)", "error": "\(error)"])
+                        metadata: ["datasource": "\(replica.name)", "error": "\(loggableFailure(error))"])
                     // Parked until shutdown: returning would end nothing,
                     // and throwing would end the primary too.
                     while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
