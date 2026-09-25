@@ -160,6 +160,21 @@ struct ValkeyRateLimitStoreIntegrationTests {
         }
     }
 
+    /// The script computes `tat + cost * emission`: a negative cost would
+    /// have handed permits back rather than failed.
+    @Test("a negative cost is refused, not credited back", arguments: TestServer.available)
+    func negativeCostRefused(_ server: TestServer) async throws {
+        try await withStore(server) { store in
+            let quota = RateLimitQuota.perMinute(2)
+            _ = try await store.consume(key: "negative", cost: 2, quota: quota)
+            await #expect(throws: RateLimitStoreError.self) {
+                _ = try await store.consume(key: "negative", cost: -2, quota: quota)
+            }
+            #expect(try await store.consume(key: "negative", cost: 1, quota: quota).isAllowed == false,
+                    "nothing was handed back")
+        }
+    }
+
     @Test("a zero cost probes without spending", arguments: TestServer.available)
     func probe(server: TestServer) async throws {
         try await withStore(server) { store in

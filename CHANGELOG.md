@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] - 2026-09-25
+
+### Fixed
+
+- **`ValkeyRateLimitStore` refuses a negative cost.** Its script computes
+  `tat + cost * emission`, so a negative cost did not fail — it handed
+  permits back. It now throws `RateLimitStoreError`, as alula's in-memory store
+  does since alula 0.52.0, whose `RateLimiting` middleware also charges a
+  negative computed cost as one permit.
+
 ## [0.19.0] - 2026-09-25
 
 alula-data's share of the Alula diagnostics design.

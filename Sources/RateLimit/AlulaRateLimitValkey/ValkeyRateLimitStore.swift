@@ -36,6 +36,12 @@ public final class ValkeyRateLimitStore: RateLimitStore, Sendable {
     public func consume(key: String, cost: Int, quota: RateLimitQuota) async throws
         -> RateLimitDecision
     {
+        // Refused before the script: it computes `tat + cost * emission`, so
+        // a negative cost would not fail — it would hand permits back. The
+        // in-memory store throws the same error for the same call.
+        guard cost >= 0 else {
+            throw RateLimitStoreError(reason: "a rate limit cost cannot be negative; got \(cost)")
+        }
         let fields: [String]
         do {
             let token = try await client.eval(
