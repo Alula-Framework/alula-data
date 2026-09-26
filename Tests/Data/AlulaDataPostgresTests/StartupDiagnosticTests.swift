@@ -59,10 +59,13 @@ struct StartupDiagnosticTests {
             ]))
         #expect(module.lifecycleHooks.map(\.moment) == [.beforeStart])
         let started = Worker.Started()
-        await #expect(throws: DataSourceStartupError.self) {
+        let error = await #expect(throws: DataSourceStartupError.self) {
             try await Alula.bootstrap(
                 configuration: Configuration(), modules: [module, Worker(started: started)])
         }
+        // Printed by Alula.run with alula-data's code and page.
+        #expect(error?.diagnosticCode?.id == "ALD-DATA-1001")
+        #expect(error?.diagnosticCode?.documentationURL.contains("/alula-data/") == true)
         #expect(!started.flag.withLock { $0 }, "no other service started")
     }
 }

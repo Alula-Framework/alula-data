@@ -46,7 +46,7 @@ struct DiagnosticPagesTests {
             "uncacheableMethod": "ALD-CACHE-1003", "invalidKeyParameter": "ALD-CACHE-1004",
             "evictWithoutKey": "ALD-CACHE-1005",
         ]
-        var proven = try codes(in: "Tests", pattern: /#expect\(.*(ALD-MIGRATE-\d{4})/)
+        var proven = try codes(in: "Tests", pattern: /#expect\(.*(ALD-(?:MIGRATE|DATA)-\d{4})/)
         for name in try codes(in: "Tests", pattern: /coded\(\.(\w+),/) {
             if let id = cacheNames[name] { proven.insert(id) }
         }

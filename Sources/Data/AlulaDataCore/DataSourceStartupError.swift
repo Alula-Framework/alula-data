@@ -1,4 +1,5 @@
 import AlulaCore
+import AlulaDiagnostics
 
 /// A datasource could not establish its connections at startup.
 ///
@@ -43,4 +44,14 @@ public struct DataSourceStartupError: Error, StartupDiagnostic, CustomStringConv
     }
 
     public var description: String { startupDiagnostic }
+
+    /// `Alula.run` prints the code and a link to its page in alula-data.
+    public var diagnosticCode: DiagnosticCode? { .dataSourceUnreachable }
+}
+
+extension DiagnosticCode {
+    /// A data source could not connect at startup.
+    public static let dataSourceUnreachable = DiagnosticCode(
+        "ALD-DATA-1001", "A data source could not connect at startup",
+        documentationURL: "https://github.com/Alula-Framework/alula-data/blob/main/Diagnostics/ALD-DATA-1001.md")
 }

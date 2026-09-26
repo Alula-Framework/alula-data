@@ -75,7 +75,7 @@ let package = Package(
         // never AlulaWeb. Opting out of alula's default "Web" trait keeps
         // Hummingbird, NIO, and the TLS stack out of every consumer that
         // wants a cache or a data source but not an HTTP server.
-        .package(url: "https://github.com/Alula-Framework/alula.git", from: "0.53.0", traits: []),
+        .package(url: "https://github.com/Alula-Framework/alula.git", from: "0.53.1", traits: []),
         .package(url: "https://github.com/Alula-Framework/swift-changeset.git", from: "0.2.0"),
         .package(url: "https://github.com/Alula-Framework/hangar.git", from: "0.10.1"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
@@ -128,6 +128,7 @@ let package = Package(
             name: "AlulaDataCore",
             dependencies: [
                 .product(name: "AlulaCore", package: "alula"),
+                .product(name: "AlulaDiagnostics", package: "alula"),
                 .product(name: "Changesets", package: "swift-changeset"),
             ],
             path: "Sources/Data/AlulaDataCore",
