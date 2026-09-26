@@ -1,3 +1,4 @@
+import AlulaMigrateCore
 import AlulaMigrate
 import Hangar
 import PostgresNIO

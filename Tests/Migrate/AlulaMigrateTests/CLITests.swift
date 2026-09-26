@@ -1,3 +1,4 @@
+import AlulaMigrateCore
 import AlulaMigrate
 import Foundation
 import Testing

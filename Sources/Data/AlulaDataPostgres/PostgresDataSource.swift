@@ -1,3 +1,4 @@
+import AlulaMigrateCore
 import AlulaDataCore
 import AlulaMigrate
 import Logging

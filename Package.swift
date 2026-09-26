@@ -278,6 +278,7 @@ let package = Package(
         .target(
             name: "AlulaDataPostgres",
             dependencies: [
+                "AlulaMigrateCore",
                 "AlulaDataCore", "AlulaMigrate",
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Hangar", package: "hangar", condition: .when(traits: ["Postgres"])),
@@ -340,6 +341,7 @@ let package = Package(
         .target(
             name: "AlulaDataValkey",
             dependencies: [
+                "AlulaMigrateCore",
                 "AlulaDataCore",
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),
@@ -477,6 +479,7 @@ let package = Package(
         .testTarget(
             name: "AlulaDataValkeyTests",
             dependencies: [
+                "AlulaMigrateCore",
                 "AlulaDataValkey", "AlulaDataCore", "AlulaDataTesting",
                 .product(name: "AlulaCore", package: "alula"),
                 .product(name: "Valkey", package: "valkey-swift", condition: .when(traits: ["Valkey"])),

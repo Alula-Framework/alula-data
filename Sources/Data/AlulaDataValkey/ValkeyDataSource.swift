@@ -1,3 +1,4 @@
+import AlulaMigrateCore
 import AlulaDataCore
 import Logging
 import ServiceLifecycle
@@ -375,7 +376,10 @@ public final class ValkeyDataSource: DataSource, Sendable {
                     "failed to replace broken valkey connection; retrying",
                     metadata: [
                         "datasource": "\(name)",
-                        "error": "\(error)",
+                        // Relay #47: the raw text was nested type names
+                        // around "(errno: 111)"; this is "connection refused
+                        // (127.0.0.1:6379)", as the Postgres pool says it.
+                        "error": "\(readableConnectionFailure("\(error)"))",
                         "attempt": "\(consecutiveFailures)",
                         "retry-in": "\(backoff)",
                     ])
