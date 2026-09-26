@@ -257,6 +257,9 @@ let package = Package(
             dependencies: [
                 "AlulaMigrate",
                 "AlulaMigrateCore",
+                // For datasource.<name>.url from alula.yaml, read the way the
+                // application reads it (Relay #29).
+                "AlulaDataCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser", condition: .when(traits: ["Postgres"])),
             ],
             path: "Sources/Migrate/AlulaMigrateCLI",

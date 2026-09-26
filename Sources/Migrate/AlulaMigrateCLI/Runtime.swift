@@ -13,7 +13,12 @@ enum Runtime {
         onEvent: (@Sendable (MigrationEvent) -> Void)? = nil,
         _ body: @Sendable @escaping (AlulaMigrator) async throws -> T
     ) async throws -> T {
-        let url = try DatabaseURL.resolve(flag: options.databaseUrl)
+        let (url, source) = try DatabaseURL.resolve(
+            flag: options.databaseUrl, datasource: options.datasource,
+            configDirectory: options.configDirectory)
+        // To stderr, so output a script parses is unchanged.
+        FileHandle.standardError.write(
+            Data("migrate: database '\(url.database)' on \(url.host):\(url.port) (from \(source))\n".utf8))
         let clientConfiguration = try url.postgresConfiguration()
         try await checkConnection(to: url)
 

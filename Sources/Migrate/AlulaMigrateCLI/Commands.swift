@@ -8,7 +8,7 @@ import Foundation
 /// and reading the package manifest at runtime is not a thing a compiled
 /// binary can do. It sat at "0.1.0" through two releases, so it is pinned by a
 /// test that reads the changelog's most recent version.
-let alulaMigrateVersion = "0.21.2"
+let alulaMigrateVersion = "0.22.0"
 
 /// Options shared by every command that connects to the database.
 struct DatabaseOptions: ParsableArguments {
@@ -16,9 +16,26 @@ struct DatabaseOptions: ParsableArguments {
         name: .customLong("database-url"),
         help: """
             Postgres connection URL (postgres://user:pass@host:port/db?sslmode=...). \
-            Defaults to $ALULA_DATABASE_URL, then $DATABASE_URL.
+            Defaults to $ALULA_DATABASE_URL, then $DATABASE_URL, then the \
+            datasource's url in alula.yaml.
             """)
     var databaseUrl: String?
+
+    @Option(
+        name: .customLong("datasource"),
+        help: """
+            The datasource in alula.yaml whose url to use when no URL is given: \
+            datasource.<name>.url. Defaults to primary.
+            """)
+    var datasource: String = "primary"
+
+    @Option(
+        name: .customLong("config-directory"),
+        help: """
+            Where alula.yaml and alula-{env}.yaml live. Defaults to the current \
+            directory, as for the application.
+            """)
+    var configDirectory: String?
 
     @Option(
         name: .customLong("migrations-table"),

@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-09-26
+
+### Added
+
+- **`migrate` reads the database from `alula.yaml`** (Relay #29). With no
+  `--database-url`, `$ALULA_DATABASE_URL` or `$DATABASE_URL`, it uses
+  `datasource.primary.url` — or `--datasource <name>` — loaded with the
+  application's own configuration loader, so the environment overlay
+  (`alula-{env}.yaml`), `${VAR}` substitution and
+  `ALULA_DATASOURCE_<NAME>_URL` apply exactly as they do when the application
+  runs. `--config-directory` says where the files are. The database used to be
+  configured twice, once for the application and once for the tool, and the
+  two could drift: migrations applied to one database while the application
+  ran against another.
+- **`migrate` says which database it is about to use, and why**, on stderr
+  before every run: `migrate: database 'app_dev' on db.internal:5432 (from
+  datasource.primary.url in /srv/app/alula.yaml)`. Output a script parses is
+  unchanged.
+
 ## [0.21.2] - 2026-09-26
 
 ### Fixed

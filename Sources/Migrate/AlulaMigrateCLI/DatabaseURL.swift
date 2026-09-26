@@ -1,3 +1,5 @@
+import AlulaCore
+import AlulaDataCore
 import Foundation
 import NIOSSL
 import PostgresNIO
@@ -33,6 +35,54 @@ struct DatabaseURL: Equatable {
             throw CLIError.missingDatabaseURL
         }
         return try parse(raw)
+    }
+
+    /// Where a resolved URL came from — printed before a run, because the
+    /// failure #29 is about is migrating one database while the application
+    /// uses another.
+    enum Source: Equatable, CustomStringConvertible {
+        case flag
+        case environment(String)
+        case configuration(key: String, directory: String)
+
+        var description: String {
+            switch self {
+            case .flag: "--database-url"
+            case .environment(let name): "$\(name)"
+            case .configuration(let key, let directory): "\(key) in \(directory)/alula.yaml"
+            }
+        }
+    }
+
+    /// The flag and the environment variables first, as before; then the
+    /// datasource's url in `alula.yaml`, read with the application's own
+    /// loader — the environment overlay (`alula-{env}.yaml`) and
+    /// `ALULA_DATASOURCE_<NAME>_URL` apply exactly as they do when it runs.
+    /// The database used to be configured twice, once for the application
+    /// and once for this tool, and the two could drift (Relay #29).
+    static func resolve(
+        flag: String?, datasource: String, configDirectory: String?,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> (url: DatabaseURL, source: Source) {
+        if let flag { return (try parse(flag), .flag) }
+        for name in ["ALULA_DATABASE_URL", "DATABASE_URL"] {
+            if let raw = environment[name] { return (try parse(raw), .environment(name)) }
+        }
+        let directory = configDirectory ?? FileManager.default.currentDirectoryPath
+        let base = URL(fileURLWithPath: directory).appendingPathComponent(Configuration.baseFileName)
+        guard FileManager.default.fileExists(atPath: base.path) else {
+            throw CLIError.missingDatabaseURL
+        }
+        let configuration = try Configuration.load(
+            from: URL(fileURLWithPath: directory), processEnvironment: environment)
+        let key = "datasource.\(datasource).url"
+        let settings: DataSourceSettings
+        do {
+            settings = try DataSourceSettings.load(name: datasource, from: configuration)
+        } catch {
+            throw CLIError.noDatasourceInConfiguration(key: key, directory: directory, reason: "\(error)")
+        }
+        return (try parse(settings.url), .configuration(key: key, directory: directory))
     }
 
     static func parse(_ raw: String) throws -> DatabaseURL {

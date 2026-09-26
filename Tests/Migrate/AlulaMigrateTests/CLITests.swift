@@ -316,3 +316,109 @@ struct ReadableConnectionFailureTests {
         #expect(readableConnectionFailure("serverClosedConnection") == "serverClosedConnection")
     }
 }
+
+@Suite("The database from alula.yaml")
+struct ConfiguredDatabaseTests {
+    /// A directory holding `files`, removed afterwards.
+    private func withDirectory<T>(_ files: [String: String], _ body: (String) throws -> T) throws -> T {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("migrate-config-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for (name, contents) in files {
+            try contents.write(to: directory.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        return try body(directory.path)
+    }
+
+    private let base = """
+        datasource:
+          primary:
+            url: postgres://app:secret@db.internal:5432/app_dev
+          reporting:
+            url: postgres://reader@replica:5432/app_dev
+        """
+
+    @Test("with no URL given, the application's datasource is used, and said to be")
+    func fromConfiguration() throws {
+        // Relay #29: the database was configured twice, once for the app and
+        // once for migrate, and the two could drift apart.
+        try withDirectory(["alula.yaml": base]) { directory in
+            let (url, source) = try DatabaseURL.resolve(
+                flag: nil, datasource: "primary", configDirectory: directory, environment: [:])
+            #expect(url.host == "db.internal" && url.database == "app_dev" && url.username == "app")
+            #expect(source.description == "datasource.primary.url in \(directory)/alula.yaml")
+        }
+    }
+
+    @Test("the environment overlay and ALULA_ variables apply as they do for the application")
+    func overlayAndEnvironment() throws {
+        try withDirectory([
+            "alula.yaml": base,
+            "alula-prod.yaml": "datasource:\n  primary:\n    url: postgres://app@db.prod:5432/app\n",
+        ]) { directory in
+            let prod = try DatabaseURL.resolve(
+                flag: nil, datasource: "primary", configDirectory: directory,
+                environment: ["ALULA_ENV": "prod"])
+            #expect(prod.url.host == "db.prod")
+            let overridden = try DatabaseURL.resolve(
+                flag: nil, datasource: "primary", configDirectory: directory,
+                environment: ["ALULA_DATASOURCE_PRIMARY_URL": "postgres://ops@db.override:5432/app"])
+            #expect(overridden.url.host == "db.override")
+        }
+    }
+
+    @Test("a substituted variable resolves from the environment")
+    func substitution() throws {
+        try withDirectory([
+            "alula.yaml": "datasource:\n  primary:\n    url: ${APP_DATABASE_URL}\n"
+        ]) { directory in
+            let resolved = try DatabaseURL.resolve(
+                flag: nil, datasource: "primary", configDirectory: directory,
+                environment: ["APP_DATABASE_URL": "postgres://app@db.sub:5432/app"])
+            #expect(resolved.url.host == "db.sub")
+        }
+    }
+
+    @Test("--datasource picks another; the flag and the environment still come first")
+    func precedence() throws {
+        try withDirectory(["alula.yaml": base]) { directory in
+            #expect(
+                try DatabaseURL.resolve(
+                    flag: nil, datasource: "reporting", configDirectory: directory, environment: [:]
+                ).url.host == "replica")
+            let flag = try DatabaseURL.resolve(
+                flag: "postgres://f@flag:5432/x", datasource: "primary", configDirectory: directory,
+                environment: ["ALULA_DATABASE_URL": "postgres://e@env:5432/x"])
+            #expect(flag.url.host == "flag" && flag.source == .flag)
+            let env = try DatabaseURL.resolve(
+                flag: nil, datasource: "primary", configDirectory: directory,
+                environment: ["ALULA_DATABASE_URL": "postgres://e@env:5432/x"])
+            #expect(env.url.host == "env" && env.source == .environment("ALULA_DATABASE_URL"))
+        }
+    }
+
+    @Test("a missing datasource says which key, and where")
+    func missingDatasource() throws {
+        try withDirectory(["alula.yaml": base]) { directory in
+            #expect {
+                _ = try DatabaseURL.resolve(
+                    flag: nil, datasource: "analytics", configDirectory: directory, environment: [:])
+            } throws: { error in
+                String(describing: error).hasPrefix("\(directory)/alula.yaml has no usable datasource.analytics.url")
+            }
+        }
+    }
+
+    @Test("no URL and no alula.yaml says where a URL can come from")
+    func nothingAnywhere() throws {
+        try withDirectory([:]) { directory in
+            #expect {
+                _ = try DatabaseURL.resolve(
+                    flag: nil, datasource: "primary", configDirectory: directory, environment: [:])
+            } throws: { error in
+                String(describing: error).contains("alula.yaml")
+            }
+        }
+    }
+}
