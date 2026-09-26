@@ -1,3 +1,5 @@
+import AlulaCore
+
 /// A pooled source of store connections. One per configured store —
 /// registered as a singleton in the Container; its long-running work is
 /// handed to the ServiceGroup via `AlulaModule.service` (Alula Core).
@@ -167,6 +169,14 @@ extension DataSource {
 public enum DataSourceError: Error, Sendable, Equatable, CustomStringConvertible {
     /// Every pooled connection is checked out and the pool will not grow.
     case poolExhausted(datasource: String, poolSize: Int)
+    /// The pool is empty because the store cannot be reached: every attempt
+    /// to reconnect is failing, for `reason`.
+    ///
+    /// Distinct from ``poolExhausted(datasource:poolSize:)``, which it used to
+    /// be reported as — telling an operator to raise the pool size while the
+    /// database was down (Relay #42). The pool keeps reconnecting, and logs
+    /// when it is back.
+    case unreachable(datasource: String, reason: String)
     /// The pool has shut down (its service ended); no further checkouts.
     case closed(datasource: String)
     /// A checkout arrived before the pool's service reached `run()`.
@@ -179,11 +189,35 @@ public enum DataSourceError: Error, Sendable, Equatable, CustomStringConvertible
     public var description: String {
         switch self {
         case .poolExhausted(let datasource, let poolSize):
-            return "Datasource '\(datasource)' has no free connections (pool_size: \(poolSize)). Either raise datasource.\(datasource).pool_size or look for a scope/lease that is being held too long."
+            return "Datasource '\(datasource)' has no free connections: all \(poolSize) are in use. Raise datasource.\(datasource).pool-size, or look for a scope or lease held too long."
+        case .unreachable(let datasource, let reason):
+            return "Datasource '\(datasource)' cannot reach its database: \(reason). It keeps reconnecting, and logs when it is back."
         case .closed(let datasource):
             return "Datasource '\(datasource)' is closed — its pool service has shut down."
         case .notStarted(let datasource):
             return "Datasource '\(datasource)' has not started — its pool dials connections when its service runs (Alula Core), and this checkout arrived first. A connection resolved during module configuration rather than from a request scope will always see this; in tests, start the service (or call start()) before resolving connections."
+        }
+    }
+}
+
+/// A pool with nothing free, or a store that cannot be reached, is a
+/// dependency that is temporarily unavailable: a web layer answers 503 with
+/// `Retry-After` rather than 500. A closed pool is too — the process is
+/// shutting down, and another instance will answer. An unstarted one is a
+/// bug in the caller, and stays a 500.
+extension DataSourceError: TemporarilyUnavailable {
+    public var isTemporarilyUnavailable: Bool {
+        switch self {
+        case .poolExhausted, .unreachable, .closed: true
+        case .notStarted: false
+        }
+    }
+
+    public var retryAfter: Duration? {
+        switch self {
+        case .poolExhausted: .seconds(1)
+        case .unreachable: .seconds(5)
+        case .closed, .notStarted: nil
         }
     }
 }

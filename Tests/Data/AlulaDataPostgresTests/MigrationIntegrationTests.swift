@@ -18,14 +18,16 @@ struct MigrationIntegrationTests {
         // A second run through the same config-resolved path applies nothing.
         let applied = try await PostgresMigrations.migrate(
             configuration: try TestDatabase.configuration(),
-            migrations: TestMigrations.all
+            migrations: TestMigrations.all,
+            migratorConfiguration: TestSchema.migratorConfiguration
         )
         #expect(applied.isEmpty)
 
         // The ledger records exactly this suite's migrations.
         let status = try await PostgresMigrations.withMigrator(
             settings: try TestDatabase.settings(),
-            migrations: TestMigrations.all
+            migrations: TestMigrations.all,
+            configuration: TestSchema.migratorConfiguration
         ) { migrator in
             try await migrator.status()
         }

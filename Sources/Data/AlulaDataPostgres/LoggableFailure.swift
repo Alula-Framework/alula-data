@@ -1,3 +1,4 @@
+import AlulaMigrate
 import Hangar
 import PostgresNIO
 
@@ -20,9 +21,10 @@ package func loggableFailure(_ error: any Error) -> String {
         guard let meaning = connectionMeaning[database.sqlState] else { return database.description }
         return "\(meaning): \(database.description)"
     }
-    var parts = ["\(psql.code)"]
-    if let underlying = psql.underlying { parts.append("\(underlying)") }
-    return parts.joined(separator: ": ")
+    guard let underlying = psql.underlying else { return "\(psql.code)" }
+    let text = "\(underlying)"
+    let readable = readableConnectionFailure(text)
+    return readable == text ? "\(psql.code): \(text)" : readable
 }
 
 /// SQLSTATEs a connection or a pooled session meets, in words an operator
@@ -37,3 +39,30 @@ private let connectionMeaning: [String: String] = [
     "08006": "the connection failed",
     "08001": "the server refused the connection",
 ]
+
+/// A `PSQLError` rethrown with a description worth reading.
+///
+/// Hangar turns a failed statement into its `DatabaseError`, but an error
+/// raised while rows stream, or by the connection itself, reaches the caller
+/// as PostgresNIO's `PSQLError`, whose description is deliberately opaque. The
+/// queue worker logged exactly that — "Generic description to prevent
+/// accidental leakage…" — for "could not claim jobs" (Relay #43). Framework
+/// code that owns such a call and only reports its failure throws this
+/// instead: the same safe summary as ``loggableFailure(_:)``, with the
+/// original kept for anyone who needs to match on it.
+package struct PostgresFailure: Error, CustomStringConvertible {
+    package let underlying: PSQLError
+    package var description: String { loggableFailure(underlying) }
+}
+
+/// Runs `body`, rethrowing a `PSQLError` as a ``PostgresFailure``.
+package func describingPostgresFailures<T>(
+    isolation: isolated (any Actor)? = #isolation,
+    _ body: () async throws -> T
+) async throws -> T {
+    do {
+        return try await body()
+    } catch let psql as PSQLError {
+        throw PostgresFailure(underlying: psql)
+    }
+}

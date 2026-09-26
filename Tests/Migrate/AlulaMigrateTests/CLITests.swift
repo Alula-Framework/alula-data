@@ -1,3 +1,4 @@
+import AlulaMigrate
 import Foundation
 import Testing
 
@@ -244,5 +245,73 @@ struct CLIParsingTests {
             recent release is \(latest ?? "none"). Update `alulaMigrateVersion` in \
             Commands.swift when cutting a release.
             """)
+    }
+}
+
+@Suite("Connecting before a run")
+struct ConnectionCheckTests {
+    @Test("a closed port is reported at once, with where it was dialling and why")
+    func closedPortFailsFast() async throws {
+        // Relay #41: a minute of silence, then the pool's
+        // `connectionCreationCircuitBreakerTripped`, for every kind of failure.
+        let url = try DatabaseURL.parse("postgres://app:hunter2-secret@127.0.0.1:1/appdb?sslmode=disable")
+        let started = ContinuousClock.now
+        do {
+            try await Runtime.checkConnection(to: url)
+            Issue.record("connected to a closed port")
+        } catch let error as CLIError {
+            let text = error.description
+            #expect(text.hasPrefix("could not connect to postgres at 127.0.0.1:1, database 'appdb'"))
+            #expect(text.lowercased().contains("refused"))
+            #expect(!text.contains("hunter2-secret"))
+            #expect(!text.contains("CircuitBreaker"))
+        }
+        #expect(ContinuousClock.now - started < .seconds(10))
+    }
+
+    @Test("a wrong password gets the server's answer and SQLSTATE",
+          .enabled(if: ProcessInfo.processInfo.environment["ALULA_MIGRATE_TEST_DATABASE_URL"] != nil))
+    func wrongPassword() async throws {
+        let real = try #require(
+            URLComponents(string: ProcessInfo.processInfo.environment["ALULA_MIGRATE_TEST_DATABASE_URL"]!))
+        var wrong = real
+        wrong.password = "hunter2-secret"
+        let url = try DatabaseURL.parse(try #require(wrong.string))
+        await #expect {
+            try await Runtime.checkConnection(to: url)
+        } throws: { error in
+            let text = String(describing: error)
+            return text.contains("28P01") && !text.contains("hunter2-secret")
+        }
+    }
+}
+
+@Suite("Readable connection failures")
+struct ReadableConnectionFailureTests {
+    @Test("PostgresNIO's refused-connection text becomes what an operator reads")
+    func refused() {
+        let raw =
+            "Connection errors: SingleConnectionFailure(target: [IPv4]127.0.0.1/127.0.0.1:1, error: connection reset (error set): Connection refused) (errno: 111))"
+        #expect(readableConnectionFailure(raw) == "connection refused (127.0.0.1:1)")
+    }
+
+    @Test("every address tried is listed")
+    func severalAddresses() {
+        let raw =
+            "Connection errors: SingleConnectionFailure(target: [IPv4]127.0.0.1/127.0.0.1:5432, error: connection reset (error set): Connection refused) (errno: 111)), SingleConnectionFailure(target: [IPv6]localhost/::1:5432, error: connection reset (error set): Connection refused) (errno: 111))"
+        #expect(
+            readableConnectionFailure(raw) == "connection refused (127.0.0.1:5432); connection refused (::1:5432)")
+    }
+
+    @Test("a failure on an open connection, which names no address")
+    func resetByPeer() {
+        #expect(
+            readableConnectionFailure("read(descriptor:pointer:size:): Connection reset by peer) (errno: 104)")
+                == "connection reset by peer")
+    }
+
+    @Test("text in a shape it does not know comes back unchanged")
+    func unknownShape() {
+        #expect(readableConnectionFailure("serverClosedConnection") == "serverClosedConnection")
     }
 }

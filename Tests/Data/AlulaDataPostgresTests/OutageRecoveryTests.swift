@@ -80,6 +80,56 @@ struct PostgresOutageRecoveryTests {
         await source.shutdown()
     }
 
+    @Test("an empty pool during an outage says the database is unreachable, and why")
+    func outageIsUnreachableNotExhausted() async throws {
+        // Relay #42: during an outage every request and every queue logged
+        // "no free connections … raise pool_size" — the wrong diagnosis — and
+        // each request waited the whole checkout timeout to be told it.
+        let source = try PostgresDataSource(settings: try PostgresOutageServer.settings(poolSize: 2))
+        try await source.start()
+        let maintenance = Task { await source.maintainPool() }
+        defer { maintenance.cancel() }
+
+        PostgresOutageServer.stop()
+        await driveDiscoveryOfDeadConnections(source)
+        // Let replacement fail at least once more, so the reason is known.
+        try await Task.sleep(for: .milliseconds(500))
+
+        do {
+            _ = try await source.checkout(waitingUpTo: .milliseconds(100))
+            Issue.record("a checkout succeeded against a stopped server")
+        } catch let error as DataSourceError {
+            guard case .unreachable(_, let reason) = error else {
+                Issue.record("expected unreachable, got \(error)")
+                PostgresOutageServer.start()
+                await source.shutdown()
+                return
+            }
+            #expect(!reason.isEmpty)
+            #expect(!error.description.contains("pool-size"), "not a capacity problem")
+            #expect(error.isTemporarilyUnavailable)
+        }
+
+        // Unreachable for longer than the caller would wait: answered at once.
+        // (A shorter outage is still waited out: it may end in time.)
+        try await Task.sleep(for: .milliseconds(1200))
+        let started = ContinuousClock.now
+        await #expect(throws: DataSourceError.self) {
+            _ = try await source.checkout(waitingUpTo: .seconds(1))
+        }
+        #expect(
+            ContinuousClock.now - started < .milliseconds(300), "a known outage does not make callers wait")
+
+        PostgresOutageServer.start()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(60))
+        while source.establishedConnections < 2, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        let connection = try await source.checkout(waitingUpTo: .seconds(1))
+        source.release(connection)
+        await source.shutdown()
+    }
+
     /// A checkout/release cycle is what notices dead connections, exactly as
     /// it would under load.
     private func driveDiscoveryOfDeadConnections(_ source: PostgresDataSource) async {

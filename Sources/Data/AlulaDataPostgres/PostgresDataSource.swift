@@ -1,4 +1,5 @@
 import AlulaDataCore
+import AlulaMigrate
 import Logging
 import NIOCore
 import PostgresNIO
@@ -76,6 +77,9 @@ public final class PostgresDataSource: DataSource, Sendable {
         var pendingReturns = 0
         var nextConnectionID = 0
         var totalCheckouts = 0
+        /// Set while reconnecting keeps failing: since when, and why. A pool
+        /// that is empty for this reason is unreachable, not exhausted.
+        var unreachable: (since: ContinuousClock.Instant, reason: String)?
     }
 
     /// Callers parked in `checkout(waitingUpTo:)`. Core's, not this pool's —
@@ -187,7 +191,11 @@ public final class PostgresDataSource: DataSource, Sendable {
     /// task cancellation or graceful shutdown, then drains it. This is the
     /// entire body of the module's ServiceLifecycle service.
     public func run() async throws {
-        try await start()
+        // The module's before-start hook usually dialled already, before any
+        // other service started (Relay #44); a hand-driven run has not.
+        if state.withLock({ $0.phase == .idle }) {
+            try await start()
+        }
         await cancelWhenGracefulShutdown {
             await self.maintainPool()
         }
@@ -219,7 +227,7 @@ public final class PostgresDataSource: DataSource, Sendable {
                 waiters.wakeOne()
             }
             logger.info("postgres pool started", metadata: [
-                "datasource": "\(name)", "pool_size": "\(poolSize)",
+                "datasource": "\(name)", "pool-size": "\(poolSize)",
                 "host": "\(url?.host ?? connectionConfiguration.host ?? connectionConfiguration.unixSocketPath ?? "<unknown>")",
                 "database": "\(url?.database ?? connectionConfiguration.database ?? "")",
             ])
@@ -240,7 +248,9 @@ public final class PostgresDataSource: DataSource, Sendable {
                 // "password authentication failed for user …") — no password.
                 cause = "the server refused: \(server[.message] ?? "")\(server[.sqlState].map { " (SQLSTATE \($0))" } ?? "")"
             } else if let underlying = psql.underlying {
-                cause = "\(psql.code): \(underlying)"
+                let text = "\(underlying)"
+                let readable = readableConnectionFailure(text)
+                cause = readable == text ? "\(psql.code): \(text)" : readable
             } else {
                 cause = "\(psql.code)"
             }
@@ -321,6 +331,19 @@ public final class PostgresDataSource: DataSource, Sendable {
             }
             try? await Task.sleep(for: .milliseconds(10))
         }
+    }
+
+    /// Closes `connection` without waiting, and keeps it alive until the close
+    /// has finished.
+    ///
+    /// `close().whenComplete { _ in }` let the last reference go as soon as
+    /// the caller returned. A connection released after the pool had closed —
+    /// a scheduled job's, while a failed start cancelled everything — was then
+    /// deinitialized mid-close, and PostgresNIO's "PostgresConnection
+    /// deinitialized before being closed" assertion took a debug build down,
+    /// hiding the failure that had stopped the start (Relay #45).
+    private func closeDetached(_ connection: PostgresConnection) {
+        connection.close().whenComplete { _ in withExtendedLifetime(connection) {} }
     }
 
     /// How long ``shutdown()`` waits for in-flight work to return its
@@ -412,6 +435,7 @@ public final class PostgresDataSource: DataSource, Sendable {
                 }
                 backoff = Self.minimumReplacementBackoff
                 consecutiveFailures = 0
+                state.withLock { $0.unreachable = nil }
             } catch {
                 // Returning here is what wedged the pool. The reasoning was
                 // that "the next checkout/release re-triggers replacement" —
@@ -424,6 +448,10 @@ public final class PostgresDataSource: DataSource, Sendable {
                 // permanent. Alula Data Valkey hit this first and fixed it
                 // with exactly this loop; this is the port.
                 consecutiveFailures += 1
+                let reason = loggableFailure(error)
+                state.withLock { state in
+                    state.unreachable = (state.unreachable?.since ?? .now, reason)
+                }
                 logger.warning(
                     "failed to replace broken postgres connection; retrying",
                     metadata: [
@@ -451,10 +479,31 @@ public final class PostgresDataSource: DataSource, Sendable {
     /// default with this pool's native handoff: a release wakes the
     /// longest-parked caller directly rather than being noticed on a poll.
     public func checkout(waitingUpTo timeout: Duration) async throws -> PostgresConnection {
-        try await waiters.checkout(
+        // An outage that has already outlasted a whole checkout timeout will
+        // not end in the next one: answer at once rather than make every
+        // request wait five seconds to be told the same thing.
+        if let known = knownUnreachable(longerThan: timeout) { throw known }
+        return try await waiters.checkout(
             waitingUpTo: timeout,
             attempt: checkoutIfAvailable,
-            exhausted: { DataSourceError.poolExhausted(datasource: name, poolSize: poolSize) })
+            exhausted: { [self] in emptyPoolError() })
+    }
+
+    /// Why a checkout found nothing: the store is unreachable if the pool has
+    /// no connections and reconnecting is failing; otherwise every
+    /// connection is simply in use.
+    private func emptyPoolError() -> DataSourceError {
+        let unreachable = state.withLock { $0.established == 0 ? $0.unreachable : nil }
+        if let unreachable {
+            return .unreachable(datasource: name, reason: unreachable.reason)
+        }
+        return .poolExhausted(datasource: name, poolSize: poolSize)
+    }
+
+    private func knownUnreachable(longerThan duration: Duration) -> DataSourceError? {
+        let unreachable = state.withLock { $0.established == 0 ? $0.unreachable : nil }
+        guard let unreachable, ContinuousClock.now - unreachable.since >= duration else { return nil }
+        return .unreachable(datasource: name, reason: unreachable.reason)
     }
 
     /// `checkout()`'s body, with "nothing free" as a value rather than an
@@ -502,7 +551,7 @@ public final class PostgresDataSource: DataSource, Sendable {
 
     public func checkout() throws -> PostgresConnection {
         guard let connection = try checkoutIfAvailable() else {
-            throw DataSourceError.poolExhausted(datasource: name, poolSize: poolSize)
+            throw emptyPoolError()
         }
         return connection
     }
@@ -559,7 +608,7 @@ public final class PostgresDataSource: DataSource, Sendable {
             resetAndRepool(connection)
 
         case .closePool:
-            connection.close().whenComplete { _ in }
+            closeDetached(connection)
         case .dropBroken:
             replacementTrigger.yield()
         case .rollbackFirst:
@@ -599,7 +648,7 @@ public final class PostgresDataSource: DataSource, Sendable {
                     switch next {
                     case .reset: resetAndRepool(connection)
                     case .repooled: waiters.wakeOne()
-                    case .closed: connection.close().whenComplete { _ in }
+                    case .closed: closeDetached(connection)
                     }
                 case .failure(let error):
                     logger.warning("rollback of leaked transaction failed; dropping connection", metadata: [
@@ -609,7 +658,7 @@ public final class PostgresDataSource: DataSource, Sendable {
                         $0.pendingReturns -= 1
                         $0.established -= 1
                     }
-                    connection.close().whenComplete { _ in }
+                    closeDetached(connection)
                     replacementTrigger.yield()
                 }
             }
@@ -649,7 +698,7 @@ public final class PostgresDataSource: DataSource, Sendable {
                     waiters.wakeOne()
                 } else {
                     state.withLock { $0.established -= 1 }
-                    connection.close().whenComplete { _ in }
+                    closeDetached(connection)
                 }
             case .failure(let error):
                 logger.warning(
@@ -660,7 +709,7 @@ public final class PostgresDataSource: DataSource, Sendable {
                     $0.pendingReturns -= 1
                     $0.established -= 1
                 }
-                connection.close().whenComplete { _ in }
+                closeDetached(connection)
                 replacementTrigger.yield()
             }
         }
@@ -698,13 +747,16 @@ public final class PostgresDataSource: DataSource, Sendable {
                 replacementTrigger.yield()  // nudge maintenance on the way out
                 logger.error(
                     "ping found no established connections; reporting dead",
-                    metadata: ["datasource": "\(name)", "pool_size": "\(poolSize)"]
+                    metadata: ["datasource": "\(name)", "pool-size": "\(poolSize)"]
                 )
-                throw DataSourceError.poolExhausted(datasource: name, poolSize: poolSize)
+                throw DataSourceError.unreachable(
+                    datasource: name,
+                    reason: state.withLock { $0.unreachable?.reason }
+                        ?? "every connection was lost and none has been re-established yet")
             }
             logger.debug(
                 "ping found the pool saturated; reporting alive",
-                metadata: ["datasource": "\(name)", "pool_size": "\(poolSize)"]
+                metadata: ["datasource": "\(name)", "pool-size": "\(poolSize)"]
             )
         }
     }

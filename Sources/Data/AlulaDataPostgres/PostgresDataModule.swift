@@ -111,6 +111,22 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
     /// the HTTP transport first — which made the pool close *underneath* a
     /// server still serving requests.
     public var serviceShutdownPhase: ServiceShutdownPhase { .infrastructure }
+
+    /// Dials the pool before any service of the application starts.
+    ///
+    /// A database that refuses the connection used to fail the start from
+    /// inside the running service group: the listener had announced itself,
+    /// and every queue and scheduled job had logged that the pool was closed,
+    /// before the one line saying why came last (Relay #44). Dialled here, the
+    /// refusal is the only thing reported. The read replica still starts with
+    /// the service: it failing must not stop the application.
+    public var lifecycleHooks: [LifecycleHook] {
+        [
+            .beforeStart("connect datasource '\(Name.name)' to postgres") { [dataSource] _ in
+                try await dataSource.start()
+            }
+        ]
+    }
 }
 
 /// The pool's ServiceLifecycle wrapper: runs it (dial → maintain → drain).

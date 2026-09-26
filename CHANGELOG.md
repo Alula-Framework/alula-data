@@ -4,6 +4,62 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-09-26
+
+From the Relay diagnostics rerun: what an operator saw when the database went
+away, when a start failed, and when `migrate` could not connect. Requires
+alula 0.53.0.
+
+### Changed
+
+- **An empty pool during an outage says the database is unreachable, and
+  why** (Relay #42). It said `Datasource 'primary' has no free connections
+  (pool_size: 10). Either raise datasource.primary.pool_size…` — the wrong
+  diagnosis, with the old key spelling — from every request and every queue.
+  `DataSourceError.unreachable(datasource:reason:)` now carries the reason
+  reconnecting keeps failing (`connection refused (127.0.0.1:5432)`), and an
+  outage that has already outlasted a caller's checkout timeout is answered at
+  once instead of after five seconds. `poolExhausted` names
+  `datasource.<name>.pool-size`.
+- **`DataSourceError` is `TemporarilyUnavailable`** (alula 0.53.0), so a web
+  request that meets a busy, unreachable or closing pool is a `503` with
+  `Retry-After` (1 s busy, 5 s unreachable), not a `500`. An unstarted pool is
+  still a `500`: that is a bug in the caller.
+- **The Postgres pool dials before any service starts**, from
+  `PostgresDataModule`'s before-start hook (Relay #44). A refused connection
+  used to fail the start from inside the running group, after the listener
+  announced itself and after every queue and scheduled job had logged that the
+  pool was closed. Now the refusal is the only thing reported.
+- **The Postgres queue store's errors say what happened** (Relay #43). A
+  failure while rows streamed, or on the connection itself, reached the
+  worker's log as PostgresNIO's `PSQLError – Generic description to prevent
+  accidental leakage…`. It is described the way reconnect warnings are.
+- **`migrate` checks its connection first, and says what the server said**
+  (Relay #41). A wrong password, a missing database and a closed port each
+  gave a minute of silence and then `ConnectionPoolError(…
+  connectionCreationCircuitBreakerTripped)`. One direct connection now answers
+  at once: `could not connect to postgres at 127.0.0.1:5432, database 'app':
+  the server refused: password authentication failed for user "app" (SQLSTATE
+  28P01)`.
+- **A refused connection reads `connection refused (127.0.0.1:5432)`**, in
+  reconnect warnings, startup failures and `migrate`, rather than PostgresNIO's
+  nested `SingleConnectionFailure(target: [IPv4]…) (errno: 111))`. Log metadata
+  keys `pool_size` are now `pool-size`, like the configuration keys.
+
+### Fixed
+
+- **A connection returned after the pool closed no longer crashes a debug
+  build** (Relay #45). Its close was started and the last reference dropped
+  at once, so the connection could be deinitialized mid-close, and PostgresNIO's
+  "PostgresConnection deinitialized before being closed" assertion took the
+  process down. This happened whenever a start failed — a port already in use
+  — while a scheduled job held a connection, and the crash hid the reason the
+  start had failed.
+- **The Postgres test fixtures keep their own migration ledger.** They shared
+  the default `alula_migrations` with a migrate test that drops it on purpose,
+  so against a test database kept between runs every run but the first failed
+  with `relation "fdp_users" already exists`.
+
 ## [0.20.0] - 2026-09-25
 
 ### Changed

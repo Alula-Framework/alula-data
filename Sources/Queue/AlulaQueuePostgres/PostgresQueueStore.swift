@@ -58,7 +58,7 @@ public struct PostgresQueueStore: QueueStore {
     // MARK: Enqueue
 
     public func enqueue(_ job: NewQueuedJob) async throws -> EnqueueResult {
-        try await dataSource.withRepo { repo in try await enqueue(job, in: repo) }
+        try await withRepo { repo in try await enqueue(job, in: repo) }
     }
 
     /// Writes `job` through `repo` — inside its transaction, when it has one.
@@ -103,7 +103,7 @@ public struct PostgresQueueStore: QueueStore {
         queue: String, kinds: Set<String>, limit: Int, now: Date, leaseUntil: Date
     ) async throws -> [ClaimedJob] {
         guard limit > 0, !kinds.isEmpty else { return [] }
-        return try await dataSource.withRepo { repo in
+        return try await withRepo { repo in
             let rows = try await repo.execute(
                 """
                 WITH picked AS (
@@ -141,7 +141,7 @@ public struct PostgresQueueStore: QueueStore {
 
     public func extendLeases(_ jobs: [(id: QueuedJobID, attempt: Int)], until: Date) async throws {
         guard !jobs.isEmpty else { return }
-        try await dataSource.withRepo { repo in
+        try await withRepo { repo in
             _ = try await repo.execute(
                 """
                 UPDATE \(raw: name) AS job SET lease_until = \(until)
@@ -188,7 +188,7 @@ public struct PostgresQueueStore: QueueStore {
     /// Runs a fenced result update; whether it matched is whether the attempt
     /// still held the job.
     private func updated(_ statement: SQLFragment) async throws -> Bool {
-        try await dataSource.withRepo { repo in
+        try await withRepo { repo in
             let rows = try await repo.execute(statement)
             for try await _ in rows.decode(UUID.self) { return true }
             return false
@@ -198,7 +198,7 @@ public struct PostgresQueueStore: QueueStore {
     // MARK: Inspection and upkeep
 
     public func counts(queue: String) async throws -> QueueCounts {
-        try await dataSource.withRepo { repo in
+        try await withRepo { repo in
             let rows = try await repo.execute(
                 """
                 SELECT state, count(*) FROM \(raw: name) WHERE queue = \(queue) GROUP BY state
@@ -218,7 +218,7 @@ public struct PostgresQueueStore: QueueStore {
     }
 
     public func prune(completedBefore: Date, discardedBefore: Date) async throws -> Int {
-        try await dataSource.withRepo { repo in
+        try await withRepo { repo in
             let rows = try await repo.execute(
                 """
                 WITH pruned AS (
@@ -237,7 +237,7 @@ public struct PostgresQueueStore: QueueStore {
     /// The last error recorded for a job, and its state — for an operator
     /// looking at a dead letter.
     public func inspect(_ id: QueuedJobID) async throws -> (state: String, lastError: String?)? {
-        try await dataSource.withRepo { repo in
+        try await withRepo { repo in
             let rows = try await repo.execute(
                 "SELECT state, last_error FROM \(raw: name) WHERE id = \(id.rawValue)")
             for try await (state, error) in rows.decode((String, String?).self) {
@@ -251,7 +251,7 @@ public struct PostgresQueueStore: QueueStore {
 
     /// Creates the table and its indexes if absent.
     public func createTableIfNeeded() async throws {
-        try await dataSource.withRepo { repo in
+        try await withRepo { repo in
             for statement in Self.schema(table: table) {
                 try await repo.execute(SQLFragment(stringLiteral: statement))
             }
@@ -315,3 +315,16 @@ public enum PostgresQueueStoreError: Error, Sendable, CustomStringConvertible {
         }
     }
 }
+
+extension PostgresQueueStore {
+    /// The pool's `withRepo`, with a connection-level `PSQLError` rethrown as
+    /// a ``PostgresFailure`` so the worker's log says what went wrong
+    /// (Relay #43).
+    fileprivate func withRepo<T>(
+        isolation: isolated (any Actor)? = #isolation,
+        _ body: (Repo) async throws -> T
+    ) async throws -> T {
+        try await describingPostgresFailures { try await dataSource.withRepo(body) }
+    }
+}
+

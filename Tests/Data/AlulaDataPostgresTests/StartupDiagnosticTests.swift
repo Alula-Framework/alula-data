@@ -2,6 +2,8 @@ import AlulaCore
 import AlulaDataCore
 import AlulaDataPostgres
 import Foundation
+import ServiceLifecycle
+import Synchronization
 import Testing
 
 // Alula prints a startup failure's `startupDiagnostic` and no longer its
@@ -27,6 +29,41 @@ struct StartupDiagnosticTests {
                 && !text.contains("postgres://")
         }
         #expect(source.isClosed)
+    }
+
+    /// Would log if it ever started — which it must not, when the pool
+    /// cannot connect.
+    struct Worker: AlulaModule {
+        final class Started: Sendable {
+            let flag = Mutex(false)
+        }
+        struct Run: Service {
+            let started: Started
+            func run() async throws {
+                started.flag.withLock { $0 = true }
+                try? await gracefulShutdown()
+            }
+        }
+        let started: Started
+        var service: (any Service)? { Run(started: started) }
+    }
+
+    @Test("the pool dials before any service starts, so its refusal is the only report")
+    func dialsBeforeServices() async throws {
+        // Relay #44: the listener announced itself and ten errors about a
+        // closed pool came before the one line saying why.
+        let module = try PostgresDataModule<PrimaryDataSource>(
+            configuration: Configuration(values: [
+                "datasource.primary.url": "postgres://app:hunter2-secret@127.0.0.1:1/appdb",
+                "datasource.primary.pool-size": "1",
+            ]))
+        #expect(module.lifecycleHooks.map(\.moment) == [.beforeStart])
+        let started = Worker.Started()
+        await #expect(throws: DataSourceStartupError.self) {
+            try await Alula.bootstrap(
+                configuration: Configuration(), modules: [module, Worker(started: started)])
+        }
+        #expect(!started.flag.withLock { $0 }, "no other service started")
     }
 }
 

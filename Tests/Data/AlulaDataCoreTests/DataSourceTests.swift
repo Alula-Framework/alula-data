@@ -160,8 +160,24 @@ struct InMemoryDataSourceTests {
     @Test("error descriptions name the datasource and the fix")
     func errorDescriptions() {
         let exhausted = DataSourceError.poolExhausted(datasource: "primary", poolSize: 2)
-        #expect(exhausted.description.contains("datasource.primary.pool_size"))
+        #expect(exhausted.description.contains("datasource.primary.pool-size"))
         let closed = DataSourceError.closed(datasource: "analytics")
         #expect(closed.description.contains("analytics"))
+    }
+
+    @Test("an unreachable store is temporarily unavailable, and says why")
+    func unreachableDescribesTheOutage() {
+        let error = DataSourceError.unreachable(
+            datasource: "primary", reason: "connectionError: connection refused")
+        #expect(error.description.contains("cannot reach its database: connectionError: connection refused"))
+        #expect(error.isTemporarilyUnavailable)
+        #expect(error.retryAfter == .seconds(5))
+    }
+
+    @Test("busy, unreachable and closed are 503s; an unstarted pool is a bug")
+    func whichErrorsAreTemporary() {
+        #expect(DataSourceError.poolExhausted(datasource: "p", poolSize: 1).isTemporarilyUnavailable)
+        #expect(DataSourceError.closed(datasource: "p").isTemporarilyUnavailable)
+        #expect(!DataSourceError.notStarted(datasource: "p").isTemporarilyUnavailable)
     }
 }

@@ -64,6 +64,26 @@ struct PoolLifecycleIntegrationTests {
         }
     }
 
+    @Test("a connection returned after the pool closed is closed, not dropped mid-close")
+    func releaseAfterShutdownClosesCleanly() async throws {
+        // Relay #45: a failed start cancelled a scheduled job holding a
+        // connection; released after the pool closed, it was deinitialized
+        // before its close finished, and PostgresNIO's debug assertion took the
+        // process down — hiding why the start had failed.
+        let source = try PostgresDataSource(settings: try TestDatabase.settings(poolSize: 1))
+        try await source.start()
+        var closing: Task<Void, Never>?
+        do {
+            let connection = try source.checkout()
+            closing = Task { await source.shutdown() }
+            while !source.isClosed { try await Task.sleep(for: .milliseconds(5)) }
+            source.release(connection)
+        }  // the last reference goes here, with the close only just begun
+        await closing?.value
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(source.establishedConnections == 0)
+    }
+
     @Test func brokenConnectionsAreReplacedWhileServiceRuns() async throws {
         try await TestSchema.shared.ensure()
         let source = try PostgresDataSource(settings: try TestDatabase.settings(poolSize: 2))

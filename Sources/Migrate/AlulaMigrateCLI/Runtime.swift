@@ -14,6 +14,7 @@ enum Runtime {
     ) async throws -> T {
         let url = try DatabaseURL.resolve(flag: options.databaseUrl)
         let clientConfiguration = try url.postgresConfiguration()
+        try await checkConnection(to: url)
 
         var logger = Logger(label: "alula-migrate")
         logger.logLevel = options.verbose ? .debug : .warning
@@ -72,6 +73,43 @@ enum Runtime {
                 throw error
             }
         }
+    }
+
+    /// Dials once, directly, before the pool exists.
+    ///
+    /// The pool retries a failed connection until its circuit breaker trips —
+    /// about a minute of silence, then `ConnectionPoolError(…
+    /// connectionCreationCircuitBreakerTripped)`, the same for a wrong
+    /// password, a missing database and a closed port (Relay #41). One
+    /// direct attempt answers at once, with what the server said.
+    static func checkConnection(to url: DatabaseURL) async throws {
+        var logger = Logger(label: "alula-migrate.connect")
+        logger.logLevel = .critical
+        do {
+            let connection = try await PostgresConnection.connect(
+                configuration: try url.connectionConfiguration(), id: 0, logger: logger)
+            try? await connection.close()
+        } catch {
+            throw CLIError.cannotConnect(
+                host: url.host, port: url.port, database: url.database, cause: connectionFailure(error))
+        }
+    }
+
+    /// What a failed connection came to, without the URL or the password:
+    /// the server's own refusal ("password authentication failed for user
+    /// …", SQLSTATE 28P01), or the network's ("connection refused").
+    static func connectionFailure(_ error: any Error) -> String {
+        guard let psql = error as? PSQLError else { return String(describing: error) }
+        if let server = psql.serverInfo {
+            return "the server refused: \(server[.message] ?? "")"
+                + (server[.sqlState].map { " (SQLSTATE \($0))" } ?? "")
+        }
+        if let underlying = psql.underlying {
+            let text = "\(underlying)"
+            let readable = readableConnectionFailure(text)
+            return readable == text ? "\(psql.code): \(text)" : readable
+        }
+        return "\(psql.code)"
     }
 
     /// Formats a duration for human output, e.g. `12 ms` or `3.4 s`.

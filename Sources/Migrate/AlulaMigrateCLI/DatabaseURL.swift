@@ -91,25 +91,10 @@ struct DatabaseURL: Equatable {
     /// certificate and hostname verification in production over untrusted networks.
     func postgresConfiguration() throws -> PostgresClient.Configuration {
         let tls: PostgresClient.Configuration.TLS
-        switch sslMode {
-        case .disable:
-            tls = .disable
-        case .allow, .prefer:
-            var tlsConfig = TLSConfiguration.makeClientConfiguration()
-            tlsConfig.certificateVerification = .none
-            tls = .prefer(tlsConfig)
-        case .require:
-            var tlsConfig = TLSConfiguration.makeClientConfiguration()
-            tlsConfig.certificateVerification = .none
-            tls = .require(tlsConfig)
-        case .verifyCA:
-            var tlsConfig = TLSConfiguration.makeClientConfiguration()
-            tlsConfig.certificateVerification = .noHostnameVerification
-            tls = .require(tlsConfig)
-        case .verifyFull:
-            var tlsConfig = TLSConfiguration.makeClientConfiguration()
-            tlsConfig.certificateVerification = .fullVerification
-            tls = .require(tlsConfig)
+        switch tlsPolicy {
+        case nil: tls = .disable
+        case .prefer(let configuration)?: tls = .prefer(configuration)
+        case .require(let configuration)?: tls = .require(configuration)
         }
         return PostgresClient.Configuration(
             host: host,
@@ -119,5 +104,44 @@ struct DatabaseURL: Equatable {
             database: database,
             tls: tls
         )
+    }
+
+    /// The same settings for one direct `PostgresConnection`: what the
+    /// connection check before a run dials, to report a refusal at once.
+    func connectionConfiguration() throws -> PostgresConnection.Configuration {
+        let tls: PostgresConnection.Configuration.TLS
+        switch tlsPolicy {
+        case nil: tls = .disable
+        case .prefer(let configuration)?: tls = .prefer(try NIOSSLContext(configuration: configuration))
+        case .require(let configuration)?: tls = .require(try NIOSSLContext(configuration: configuration))
+        }
+        return PostgresConnection.Configuration(
+            host: host, port: port, username: username, password: password, database: database, tls: tls)
+    }
+
+    private enum TLSPolicy {
+        case prefer(TLSConfiguration)
+        case require(TLSConfiguration)
+    }
+
+    /// libpq-parity TLS semantics, shared by both configurations.
+    private var tlsPolicy: TLSPolicy? {
+        var configuration = TLSConfiguration.makeClientConfiguration()
+        switch sslMode {
+        case .disable:
+            return nil
+        case .allow, .prefer:
+            configuration.certificateVerification = .none
+            return .prefer(configuration)
+        case .require:
+            configuration.certificateVerification = .none
+            return .require(configuration)
+        case .verifyCA:
+            configuration.certificateVerification = .noHostnameVerification
+            return .require(configuration)
+        case .verifyFull:
+            configuration.certificateVerification = .fullVerification
+            return .require(configuration)
+        }
     }
 }

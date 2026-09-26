@@ -4,6 +4,7 @@ import Foundation
 /// come from `AlulaMigrate.MigrationError`).
 enum CLIError: Error, CustomStringConvertible, LocalizedError {
     case missingDatabaseURL
+    case cannotConnect(host: String, port: Int, database: String, cause: String)
     case invalidDatabaseURL(String, reason: String)
     case invalidMigrationName(String, reason: String)
     case migrationsDirectoryNotFound(searched: [String])
@@ -15,6 +16,8 @@ enum CLIError: Error, CustomStringConvertible, LocalizedError {
                 no database URL. Pass --database-url, or set ALULA_DATABASE_URL or \
                 DATABASE_URL (e.g. postgres://user:pass@localhost:5432/mydb).
                 """
+        case .cannotConnect(let host, let port, let database, let cause):
+            return "could not connect to postgres at \(host):\(port), database '\(database)': \(cause)"
         case .invalidDatabaseURL(let url, let reason):
             return "invalid database URL '\(url)': \(reason)"
         case .invalidMigrationName(let name, let reason):

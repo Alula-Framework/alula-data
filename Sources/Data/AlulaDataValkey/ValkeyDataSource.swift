@@ -163,7 +163,7 @@ public final class ValkeyDataSource: DataSource, Sendable {
                 try await addConnection()
             }
             logger.info("valkey pool started", metadata: [
-                "datasource": "\(name)", "pool_size": "\(poolSize)",
+                "datasource": "\(name)", "pool-size": "\(poolSize)",
                 "host": "\(url.host)", "port": "\(url.port)", "database": "\(url.database)",
             ])
         } catch {
@@ -550,12 +550,12 @@ public final class ValkeyDataSource: DataSource, Sendable {
                 replacementTrigger.yield()  // nudge maintenance on the way out
                 logger.error(
                     "ping found no established connections; reporting dead",
-                    metadata: ["datasource": "\(name)", "pool_size": "\(poolSize)"])
+                    metadata: ["datasource": "\(name)", "pool-size": "\(poolSize)"])
                 throw DataSourceError.poolExhausted(datasource: name, poolSize: poolSize)
             }
             logger.debug(
                 "ping found the pool saturated; reporting alive",
-                metadata: ["datasource": "\(name)", "pool_size": "\(poolSize)"])
+                metadata: ["datasource": "\(name)", "pool-size": "\(poolSize)"])
         }
     }
 
