@@ -98,7 +98,7 @@ public final class CacheTTLPolicy: Sendable {
         let key = CacheConfigKey.namespaceTTL(namespace)
         do {
             guard let seconds = try configuration.getIfPresent(allowingSnakeCase: key, as: Int.self) else { return nil }
-            // Note that `0` here is not what `0` means at `cache.default_ttl`.
+            // Note that `0` here is not what `0` means at `cache.default-ttl`.
             // There it means "no default, entries never expire"; here it falls
             // through to the default, because "this namespace has no TTL of its
             // own" is the far more likely reading of a zero someone typed under

@@ -82,7 +82,7 @@ public final class ValkeyDataSource: DataSource, Sendable {
     private let replacementTrigger: AsyncStream<Void>.Continuation
 
     private enum Phase: Equatable {
-        case idle       // constructed at freeze(); service not yet started
+        case idle       // constructed at composition; service not yet started
         case running
         case closed
     }
@@ -125,7 +125,7 @@ public final class ValkeyDataSource: DataSource, Sendable {
         self.poolSize = settings.poolSize
         self.checkoutTimeout = settings.checkoutTimeout
         self.resetOnRelease = resetOnRelease
-        // Parsed here — at freeze()'s eager singleton construction — so a
+        // Parsed here — when composition constructs the module — so a
         // malformed URL fails bootstrap, not the first command (Alula
         // Data Core posture). TLS context construction likewise.
         self.url = try ValkeyDataSourceURL.parse(settings.url, datasource: settings.name)

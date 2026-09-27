@@ -54,7 +54,7 @@ public struct AlulaCacheModule: AlulaModule {
         adapter: (any Cache)? = nil,
         codec: (any CacheCodec)? = nil
     ) throws {
-        // Always built — a bad `cache.memory.max_entries` fails composition
+        // Always built — a bad `cache.memory.max-entries` fails composition
         // whether or not an adapter is present, exactly as the eager
         // freeze()-time factory used to. It is the store when no adapter was
         // supplied, and the value the `InMemoryCache` registration serves

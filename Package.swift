@@ -17,8 +17,8 @@ import PackageDescription
 // PostgresNIO, valkey-swift, NIOSSL, and swift-crypto; with them it resolves
 // none of those.
 //
-//     .package(url: "...alula-data.git", from: "0.17.0")                      // cache + protocols
-//     .package(url: "...alula-data.git", from: "0.17.0", traits: ["Postgres"]) // + Postgres
+//     .package(url: "...alula-data.git", from: "0.23.0")                      // cache + protocols
+//     .package(url: "...alula-data.git", from: "0.23.0", traits: ["Postgres"]) // + Postgres
 //
 // Building this package itself: `swift test --enable-all-traits`.
 let package = Package(
