@@ -142,7 +142,7 @@ public enum RegistryGenerator {
                     \(paths.dropLast().map { $0.split(separator: "/").last.map(String.init) ?? $0 }.joined(separator: ", ")). \
                     Each migration must have a unique timestamp prefix. This usually comes from a \
                     hand-edited or merge-conflicted filename; regenerate one of the timestamps with \
-                    'alula-migrate create'.
+                    the migrate tool's create command ('migrate create').
                     """,
                 related: Array(paths.dropLast())))
         }

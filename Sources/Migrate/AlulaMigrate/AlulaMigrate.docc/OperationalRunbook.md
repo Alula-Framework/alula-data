@@ -21,7 +21,7 @@ retrying. See <doc:UnwrappedMigrations>.
 migration 20260715093000_AddEmailIndex has been modified since it was applied (checksum mismatch). Applied migrations are immutable — create a new migration to make further changes.
   recorded checksum: 3f2a…
   current checksum:  91be…
-If the edit is confirmed-safe (formatting or comments only), run 'alula-migrate repair' to re-baseline the recorded checksum.
+If the edit is confirmed-safe (formatting or comments only), run the migrate tool's repair command ('migrate repair') to re-baseline the recorded checksum.
 ```
 
 The CLI prints it after `Error: `; `status` shows the same migration as

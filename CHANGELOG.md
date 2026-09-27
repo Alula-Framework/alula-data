@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.1] - 2026-09-27
+
+### Fixed
+
+- **Messages that named things that are not there.** A checksum mismatch said
+  to run `alula-migrate repair` and a duplicate migration version said to run
+  `alula-migrate create`; the tool an application builds is called `migrate`,
+  so both now name the migrate tool's command (`migrate repair`,
+  `migrate create`). With `--datasource analytics`, the missing-URL error still
+  pointed at `datasource.primary.url`; it now names the datasource asked for.
+  A connection checked out before its pool started said the pool dials "when
+  its service runs", which stopped being true for Postgres when it moved to a
+  before-start hook; it now says where each pool dials. The migration
+  generator's error for a failure that is not a diagnostic read
+  `error: [AlulaMigrate] …`; it is `error: alula-migrate-gen: …`.
+- Documentation caught up with 0.20–0.23; see the commit for the list. The
+  AlulaMigrate guides told readers to run `migrate plan` (it is
+  `apply --dry-run`) and to call `MyAppMigrations.all` (it is
+  `_allMigrations()`), and the runbook gave the wrong advisory-lock key.
+
 ## [0.23.0] - 2026-09-27
 
 Requires alula 0.56.0 and Hangar 0.14.0.

@@ -195,7 +195,7 @@ public enum DataSourceError: Error, Sendable, Equatable, CustomStringConvertible
         case .closed(let datasource):
             return "Datasource '\(datasource)' is closed — its pool service has shut down."
         case .notStarted(let datasource):
-            return "Datasource '\(datasource)' has not started — its pool dials connections when its service runs (Alula Core), and this checkout arrived first. A connection resolved during module configuration rather than from a request scope will always see this; in tests, start the service (or call start()) before resolving connections."
+            return "Datasource '\(datasource)' has not started, and this checkout arrived first — a Postgres pool dials in the application's before-start hook, a Valkey pool when its service runs. A connection resolved during module configuration rather than from a request scope will always see this; in tests, call start() before resolving connections."
         }
     }
 }

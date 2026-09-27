@@ -68,8 +68,8 @@ public enum MigrationError: Error, CustomStringConvertible, LocalizedError, Send
                 further changes.
                   recorded checksum: \(recorded)
                   current checksum:  \(current)
-                If the edit is confirmed-safe (formatting or comments only), run 'alula-migrate \
-                repair' to re-baseline the recorded checksum.
+                If the edit is confirmed-safe (formatting or comments only), run the migrate \
+                tool's repair command ('migrate repair') to re-baseline the recorded checksum.
                 """
 
         case .unknownAppliedMigrations(let unknown):

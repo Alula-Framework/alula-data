@@ -19,7 +19,7 @@ struct GenMain {
             exit(1)
         } catch {
             FileHandle.standardError.write(
-                Data("error: [AlulaMigrate] \(error)\n".utf8))
+                Data("error: alula-migrate-gen: \(error)\n".utf8))
             exit(1)
         }
     }

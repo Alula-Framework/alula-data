@@ -32,7 +32,7 @@ struct DatabaseURL: Equatable {
         guard
             let raw = flag ?? environment["ALULA_DATABASE_URL"] ?? environment["DATABASE_URL"]
         else {
-            throw CLIError.missingDatabaseURL
+            throw CLIError.missingDatabaseURL(datasource: "primary")
         }
         return try parse(raw)
     }
@@ -71,7 +71,7 @@ struct DatabaseURL: Equatable {
         let directory = configDirectory ?? FileManager.default.currentDirectoryPath
         let base = URL(fileURLWithPath: directory).appendingPathComponent(Configuration.baseFileName)
         guard FileManager.default.fileExists(atPath: base.path) else {
-            throw CLIError.missingDatabaseURL
+            throw CLIError.missingDatabaseURL(datasource: datasource)
         }
         let configuration = try Configuration.load(
             from: URL(fileURLWithPath: directory), processEnvironment: environment)
