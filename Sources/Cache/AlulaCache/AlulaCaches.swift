@@ -14,8 +14,8 @@ import Synchronization
 ///
 /// 1. `override` — a task-local, for tests and for pipelines that need a
 ///    different runtime scoped to a task tree.
-/// 2. The installed runtime — set once by `AlulaCacheModule`'s
-///    `CacheRuntime` factory at `freeze()`.
+/// 2. The installed runtime — set once by `AlulaCacheModule`'s initializer,
+///    when the application is composed.
 /// 3. A no-op fallback over `NoopCache` — a `@Cacheable` method in an app
 ///    that never installed `AlulaCacheModule` computes every call: a
 ///    warn-once log, not an error. The unwired cache fails open like every

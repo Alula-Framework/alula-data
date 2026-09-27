@@ -6,8 +6,8 @@ everything above it is allowed to assume.
 ## Overview
 
 ``DataSource`` is the whole contract. A driver — Postgres, Valkey, an
-in-memory fake — implements it, registers itself, and everything that reads
-or writes goes through it. Nothing above this module names a database.
+in-memory fake — implements it, its module provides the pool, and everything
+that reads or writes goes through it. Nothing above this module names a database.
 
 That narrowness is the design. There is no cross-database query abstraction
 here and there will not be: Postgres and Valkey do not answer the same
@@ -49,17 +49,21 @@ in a transaction. Two separate operations may land on two connections.
 
 ``DataSourceName`` and ``PrimaryDataSource`` are how an application with more
 than one database says which is which. One source is the primary; the rest
-are named, and a component asks for the one it wants by qualifier rather than
-by hoping the right one was registered first.
+are named: the application says which pool an unqualified `@Inject` means
+with `defaultProviders`, and a component that wants another names its module
+with `@Inject(from:)`.
 
 ## Configuration and failure
 
 ``DataSourceSettings`` and ``DataSourceConfigKey`` are the shared
 configuration shape a driver reads. ``DataSourceConfigurationError`` fires
-during bootstrap — a malformed URL or a missing password is a startup
-failure, not a first-query surprise. ``DataSourceError`` is the runtime
-half, and ``DataSourceLiveness`` is what the actuator's health endpoint
-reports.
+during bootstrap — an empty URL or a pool size below one is a startup
+failure, not a first-query surprise. ``DataSourceStartupError`` is a source
+that could not connect at startup (`ALD-DATA-1001`): which source, where it
+dialled, and what came back, never the password. ``DataSourceError`` is the
+runtime half; a web request that meets one gets a `503` with `Retry-After`,
+except a checkout before the pool started, which stays a `500`.
+``DataSourceLiveness`` is what the actuator's health endpoint reports.
 
 ## Topics
 
@@ -82,3 +86,4 @@ reports.
 
 - ``DataSourceLiveness``
 - ``DataSourceError``
+- ``DataSourceStartupError``

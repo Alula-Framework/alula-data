@@ -5,7 +5,7 @@ The Valkey driver: a pooled `DataSource`, valkey-swift's typed commands, and
 
 ## Overview
 
-Registering ``ValkeyDataModule`` gives the container a pooled
+Listing ``ValkeyDataModule`` gives the application a pooled
 ``ValkeyDataSource``, and a component leases a connection per operation the
 same way it would for Postgres:
 
@@ -13,9 +13,9 @@ same way it would for Postgres:
 datasource:
   primary:                             # the datasource NAME, not the store
     url: redis://localhost:6379/2      # the path segment is the database index
-    pool_size: 10
-    checkout_timeout_ms: 5000          # how long a caller queues before failing
-    reset_on_release: true             # clear session state between borrowers
+    pool-size: 10
+    checkout-timeout-ms: 5000          # how long a caller queues before failing
+    reset-on-release: true             # clear session state between borrowers
 ```
 
 The key under `datasource:` is `Name.name` from the module's generic parameter

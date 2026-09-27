@@ -11,21 +11,21 @@ import Synchronization
 /// a variable shells cannot set.
 public enum CacheConfigKey {
     public static let root = "cache"
-    /// `cache.default_ttl` — integer seconds; the fallback when neither the
+    /// `cache.default-ttl` — integer seconds; the fallback when neither the
     /// annotation nor the namespace names a TTL. 0 means "no default".
     public static let defaultTTL = "cache.default-ttl"
     /// `cache.namespaces.<name>` — integer seconds for one namespace.
     ///
     /// `0` here means "this namespace names no TTL of its own", so
     /// ``defaultTTL`` applies — which is *not* what `0` means at
-    /// `cache.default_ttl`, where it means there is no default and entries
+    /// `cache.default-ttl`, where it means there is no default and entries
     /// never expire. The asymmetry is deliberate: a zero typed under a
     /// namespace almost always means "I have not decided", and a zero typed
     /// at the root almost always means "nothing expires unless it says so".
     public static func namespaceTTL(_ namespace: String) -> String {
         "cache.namespaces.\(namespace)"
     }
-    /// `cache.memory.max_entries` — the in-memory adapter's LRU bound.
+    /// `cache.memory.max-entries` — the in-memory adapter's LRU bound.
     public static let memoryMaxEntries = "cache.memory.max-entries"
 }
 
@@ -47,10 +47,10 @@ public enum CacheConfigurationError: Error, Sendable, Equatable, CustomStringCon
 }
 
 /// The TTL policy: annotation `ttl:` > `cache.namespaces.<name>` >
-/// `cache.default_ttl` > no expiry.
+/// `cache.default-ttl` > no expiry.
 ///
 /// The default is read (and validated) eagerly — at `CacheRuntime`
-/// construction, which the module runs at `freeze()`, so a bad value fails
+/// construction, which the module runs when it is built, so a bad value fails
 /// bootstrap. Per-namespace values load lazily per namespace and memoize:
 /// `Configuration` exposes point lookups only (no enumeration under
 /// `cache.namespaces.*`), and the namespace set is known at the annotation
@@ -63,7 +63,7 @@ public final class CacheTTLPolicy: Sendable {
     private let logger: Logger
     private let memoizedNamespaceTTLs = Mutex<[String: Duration?]>([:])
 
-    /// Reads and validates `cache.default_ttl`. Throws — callers run at
+    /// Reads and validates `cache.default-ttl`. Throws — callers run at
     /// bootstrap, where failing loudly is correct.
     public init(configuration: Configuration?, logger: Logger) throws {
         self.configuration = configuration
@@ -111,7 +111,7 @@ public final class CacheTTLPolicy: Sendable {
                     ])
                 } else {
                     logger.debug(
-                        "per-namespace TTL of 0 means 'no TTL of its own', so the default applies — unlike cache.default_ttl: 0, which means no default at all",
+                        "per-namespace TTL of 0 means 'no TTL of its own', so the default applies — unlike cache.default-ttl: 0, which means no default at all",
                         metadata: ["key": "\(key)"])
                 }
                 return nil

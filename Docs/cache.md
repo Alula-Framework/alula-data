@@ -59,7 +59,7 @@ final class PricingService {
 cache:
   default-ttl: 300          # integer seconds; 0 = no default
   namespaces:
-    prices: 900             # lowercase/digits/underscores only
+    prices: 900             # lowercase letters, digits, underscores and dots
   memory:
     max-entries: 10000      # the in-memory adapter's LRU bound
 ```

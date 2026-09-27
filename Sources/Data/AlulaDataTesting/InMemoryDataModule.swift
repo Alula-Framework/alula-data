@@ -20,11 +20,11 @@ import AlulaDataCore
 /// ```
 ///
 /// Configuration is optional for the in-memory store — it is "backed by
-/// nothing", so there is no URL to require; `datasource.<name>.pool_size`
+/// nothing", so there is no URL to require; `datasource.<name>.pool-size`
 /// is honored when present and defaults to 4 connections. Real store modules
 /// load `DataSourceSettings` instead, whose `url` is required.
 public final class InMemoryDataModule<Name: DataSourceName>: AlulaModule {
-    /// The pool size used when `datasource.<name>.pool_size` is absent.
+    /// The pool size used when `datasource.<name>.pool-size` is absent.
     /// Small on purpose: exhaustion bugs should be reachable in tests.
     public static var defaultPoolSize: Int { 4 }
 
@@ -40,7 +40,7 @@ public final class InMemoryDataModule<Name: DataSourceName>: AlulaModule {
     public let healthChecks: [HealthCheck]
 
     /// Configuration is optional for the in-memory store — it is "backed by
-    /// nothing", so there is no URL to require; `datasource.<name>.pool_size`
+    /// nothing", so there is no URL to require; `datasource.<name>.pool-size`
     /// is honored when present and defaults to 4 connections. A bad pool size
     /// fails composition rather than the first query.
     public init(configuration: Configuration = Configuration()) throws {

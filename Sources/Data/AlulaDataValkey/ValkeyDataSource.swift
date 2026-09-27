@@ -51,7 +51,7 @@ public final class ValkeyDataSource: DataSource, Sendable {
     /// The parsed `datasource.<name>.url`.
     public let url: ValkeyDataSourceURL
     /// How long `withConnection` queues before `poolExhausted`, from
-    /// `datasource.<name>.checkout_timeout_ms`.
+    /// `datasource.<name>.checkout-timeout-ms`.
     public let checkoutTimeout: Duration
 
     /// Whether a released connection has its session state cleared before it
@@ -527,9 +527,8 @@ public final class ValkeyDataSource: DataSource, Sendable {
         if disposition.1 { replacementTrigger.yield() }
     }
 
-    /// `PING`, surfaced by Actuator through the `DataSourceLiveness`
-    /// component that `register(dataSource:)` registers alongside the pool
-    ///.
+    /// `PING`, surfaced by Actuator through the `DataSourceLiveness` probe
+    /// the module provides alongside the pool.
     public func ping() async throws {
         do {
             // The non-waiting checkout on purpose: `withConnection` queues for

@@ -8,10 +8,10 @@ import AlulaCore
 /// datasource:
 ///   primary:
 ///     url: "postgres://localhost:5432/app"
-///     pool_size: 10
+///     pool-size: 10
 ///   analytics:
 ///     url: "postgres://localhost:5432/warehouse"
-///     pool_size: 4
+///     pool-size: 4
 /// ```
 ///
 /// Store-specific keys (credentials, TLS, timeouts…) live under the same
@@ -40,7 +40,7 @@ public enum DataSourceConfigKey {
         key("replica.url", datasource: name)
     }
 
-    /// `datasource.<name>.replica.pool_size` — optional, default the primary's.
+    /// `datasource.<name>.replica.pool-size` — optional, default the primary's.
     public static func replicaPoolSize(datasource name: String) -> String {
         key("replica.pool-size", datasource: name)
     }
@@ -51,13 +51,13 @@ public enum DataSourceConfigKey {
         key("replica.fallback", datasource: name)
     }
 
-    /// `datasource.<name>.pool_size` — optional, default
+    /// `datasource.<name>.pool-size` — optional, default
     /// `DataSourceSettings.defaultPoolSize`.
     public static func poolSize(datasource name: String) -> String {
         key("pool-size", datasource: name)
     }
 
-    /// `datasource.<name>.checkout_timeout_ms` — how long an async caller
+    /// `datasource.<name>.checkout-timeout-ms` — how long an async caller
     /// queues for a connection before giving up. Optional, default
     /// `DataSourceSettings.defaultCheckoutTimeout`.
     public static func checkoutTimeout(datasource name: String) -> String {
@@ -69,16 +69,16 @@ public enum DataSourceConfigKey {
 /// resolved once at bootstrap.
 ///
 /// Per, absence fails loudly at bootstrap, not silently at first query:
-/// `load` runs inside a module's registered factory, so a missing
-/// `datasource.<name>.url` surfaces as `ConfigError.missingKey` during
-/// `freeze()`'s eager singleton construction — before any request is served.
+/// `load` runs in a datasource module's `init(configuration:)`, so a missing
+/// `datasource.<name>.url` surfaces as `ConfigError.missingKey` when the
+/// application is composed — before any request is served.
 /// (The *compile-time* half of validation belongs to `@ConfigValue`
 /// sites and the build plugin, exactly as in Alula Config)
 public struct DataSourceSettings: Sendable, Equatable {
-    /// Applied when `datasource.<name>.pool_size` is absent from every source.
+    /// Applied when `datasource.<name>.pool-size` is absent from every source.
     public static let defaultPoolSize = 10
 
-    /// Applied when `datasource.<name>.checkout_timeout_ms` is absent.
+    /// Applied when `datasource.<name>.checkout-timeout-ms` is absent.
     ///
     /// Five seconds is chosen against the thing that actually goes wrong: a
     /// burst of concurrent requests against a pool sized for the steady state.
@@ -127,9 +127,9 @@ public struct DataSourceSettings: Sendable, Equatable {
     ///
     /// - `url` is required: absent from every source throws
     ///   `ConfigError.missingKey` naming the key and active environment.
-    /// - `pool_size` is optional with `defaultPoolSize`; present-but-malformed
+    /// - `pool-size` is optional with `defaultPoolSize`; present-but-malformed
     ///   throws rather than silently applying the default (Alula Config).
-    /// - `checkout_timeout_ms` is optional with `defaultCheckoutTimeout`.
+    /// - `checkout-timeout-ms` is optional with `defaultCheckoutTimeout`.
     public static func load(
         name: String = PrimaryDataSource.name,
         from configuration: Configuration

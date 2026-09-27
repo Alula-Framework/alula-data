@@ -29,8 +29,9 @@ import ServiceLifecycle
 /// `pool.withRepo { }`. Transactions are Hangar's `repo.transaction { }`, so
 /// there is no coordinator either.
 ///
-/// `service` is the pool's `run()`: dial at start (no request served before
-/// the pool is live), replace broken connections while running, drain on
+/// `lifecycleHooks` dials the pool before any service of the application
+/// starts, so no request is served before the pool is live. `service` is the
+/// pool's `run()`: replace broken connections while running, drain on
 /// graceful shutdown.
 public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
 

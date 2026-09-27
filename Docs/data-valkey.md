@@ -48,6 +48,21 @@ anything. The pool sat at zero established, answered `poolExhausted`, and
 blamed the operator's `pool-size` until the process was restarted. A blip
 became permanent.
 
+Each failed attempt logs a warning, `failed to replace broken valkey
+connection; retrying`, whose `error` reads like the Postgres pool's —
+`connection refused (127.0.0.1:6379)` rather than the driver's nested type
+names around `(errno: 111)` — with the attempt number and the next delay
+(`retry-in`). When a dial succeeds again it logs `valkey reachable again; pool
+refilling` with the number of failed attempts.
+
+A checkout during the outage still fails with `poolExhausted`: unlike the
+Postgres pool, this one does not yet report `unreachable`. A web request
+that hits it gets a `503` with `Retry-After: 1` either way.
+
+A Valkey data source dials when its service starts, not in a before-start
+hook as the Postgres one does, so a server that refuses the connection fails
+the start from inside the running service group (`ALD-DATA-1001`).
+
 `ping()` is the probe Actuator's readiness check runs (through the module's `healthChecks`). Note that `shutdown()` is what
 returns connections: a `ValkeyDataSource` started by hand in a test and
 never shut down keeps its connections for the lifetime of the process.

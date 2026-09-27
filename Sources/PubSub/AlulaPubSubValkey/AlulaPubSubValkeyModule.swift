@@ -53,17 +53,17 @@ public struct AlulaPubSubValkeyModule: AlulaModule {
     /// rather than constructing a second client that dials Valkey again.
     private let client: ValkeyPubSubClient
 
+    /// `pubsub.valkey`, for readiness: a `PING` on the publishing client.
+    /// Without it, messages published here reach no other node, and realtime
+    /// quietly became single-node.
+    public let healthChecks: [HealthCheck]
+
     /// Reads `pubsub.valkey.*` and dials nothing — building the client is
     /// pool setup, and connecting is the service's job.
     ///
     /// Throwing, because building the TLS context can fail: a `valkeys://` URL
     /// whose TLS cannot be configured must fail bootstrap rather than quietly
     /// connecting in the clear.
-    /// `pubsub.valkey`, for readiness: a `PING` on the publishing client.
-    /// Without it, messages published here reach no other node, and realtime
-    /// quietly became single-node.
-    public let healthChecks: [HealthCheck]
-
     public init(configuration: Configuration) throws {
         let client = try ValkeyPubSubClient(
             settings: try ValkeyPubSubSettings.load(from: configuration))

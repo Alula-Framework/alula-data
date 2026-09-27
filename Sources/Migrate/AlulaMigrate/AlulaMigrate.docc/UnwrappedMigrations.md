@@ -19,11 +19,11 @@ Opting out is explicit:
 struct AddEmailIndex: Migration {
     static let wrapInTransaction = false
 
-    static func up(_ schema: SchemaBuilder) {
+    func up(_ schema: SchemaBuilder) {
         schema.createIndex(on: "users", columns: ["email"], concurrently: true)
     }
 
-    static func down(_ schema: SchemaBuilder) {
+    func down(_ schema: SchemaBuilder) {
         schema.dropIndex("users_email_idx", concurrently: true, ifExists: true)
     }
 }
@@ -42,13 +42,17 @@ The library's response is to refuse to lie about it:
 - The message says manual intervention may be required, because it may.
 
 ```
-Migration 20260715093000 (AddEmailIndex) failed while executing statement 1 of 1:
+migration 20260715093000_AddEmailIndex failed while applying statement 1 of 1:
 
     CREATE INDEX CONCURRENTLY IF NOT EXISTS "users_email_idx" ON "users" ("email")
 
-This migration runs outside a transaction, so the failure was NOT rolled back.
-The version was not recorded. Inspect the database before retrying.
+underlying error: …
+
+This migration runs with wrapInTransaction = false, so there was no transaction to roll back. No statements from this migration had been applied. The version was not recorded, so the migration can re-run once the database state is repaired. Manual intervention may be required — for example, a failed CREATE INDEX CONCURRENTLY leaves an INVALID index that must be dropped before retrying.
 ```
+
+`underlying error:` is the server's own report — severity, SQLSTATE and
+message, with its detail and hint when it gives them.
 
 ## The INVALID index case
 

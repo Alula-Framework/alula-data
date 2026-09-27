@@ -25,7 +25,7 @@ import Valkey
 /// two different settings — configuring only one leaves the other unbounded:
 ///
 /// 1. **Obtaining a connection.** Bounded by the pool's
-///    `circuitBreakerTripAfter`, set here from `unreachable_after_ms`. At
+///    `circuitBreakerTripAfter`, set here from `unreachable-after-ms`. At
 ///    the driver's 60-second default, the first call against a downed
 ///    server hangs for a *minute* — measured, and precisely the hung lookup
 ///    forbids. Configured short, the pool declares the server

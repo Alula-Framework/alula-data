@@ -5,7 +5,7 @@ operation, and transactions as a visible bracket.
 
 ## Overview
 
-Registering ``PostgresDataModule`` gives the container a pooled
+Listing ``PostgresDataModule`` gives the application a pooled
 ``PostgresDataSource``, and everything above it works in terms of
 `AlulaDataCore`'s seam rather than PostgresNIO:
 
@@ -13,9 +13,9 @@ Registering ``PostgresDataModule`` gives the container a pooled
 datasource:
   primary:                                    # the datasource NAME, not the store
     url: postgres://app@localhost:5432/app
-    pool_size: 10
-    checkout_timeout_ms: 5000                 # how long a caller queues before failing
-    reset_on_release: true                    # DISCARD ALL between scopes
+    pool-size: 10
+    checkout-timeout-ms: 5000                 # how long a caller queues before failing
+    reset-on-release: true                    # DISCARD ALL between scopes
 ```
 
 The key under `datasource:` is `Name.name` from the module's generic parameter
@@ -25,7 +25,27 @@ produced a bootstrap failure about a missing `datasource.primary.url`.
 
 ``PostgresDataSourceURL`` parses and validates that URL during bootstrap, so
 a typo is a startup failure with a message rather than a connection error on
-the first request.
+the first request. The module then dials every connection in a before-start
+hook, before any service of the application starts, so a database that
+refuses the connection is reported first and alone, as `ALD-DATA-1001`.
+
+## What a client sees
+
+A request that fails on the database gets a status that says what happened,
+not an opaque `500`. This module conforms Hangar's errors to alula's
+`TemporarilyUnavailable` and `RejectedInput`:
+
+- A transient `DatabaseError` — a deadlock, a serialization failure, a lock
+  not available, a cancelled statement, the server starting up or shutting
+  down — is `503` with `Retry-After: 1`.
+- A `DatabaseConnectionError` for a database that cannot be reached, or a
+  connection that dropped, is `503` with `Retry-After: 5`. A refused login, a
+  TLS failure or a closed pool is configuration, and stays a `500`.
+- `HangarError.unknownFilterField` and `.invalidFilterValue` are `400`, with a
+  message naming only the field the request gave, never the table.
+
+The pool's own `DataSourceError` is `503` too, except a checkout before the
+pool started, which is a bug and stays a `500`.
 
 ## Transactions are a bracket
 
@@ -63,8 +83,9 @@ annotation and a scope you cannot see.
 ## Migrations
 
 `AlulaMigrate` owns schema change; this module contributes
-``PostgresMigrations``, the Postgres implementation of the migration
-database. `alula migrate` is the command-line side.
+``PostgresMigrations``, which runs an `AlulaMigrator` against a datasource's
+configured URL. `alula migrate`, or a project's own migrate executable built
+on `AlulaMigrateCLI`, is the command-line side.
 
 ## Topics
 

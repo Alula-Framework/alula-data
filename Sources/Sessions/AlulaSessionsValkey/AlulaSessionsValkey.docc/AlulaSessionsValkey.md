@@ -33,7 +33,9 @@ only changes where the bytes go.
 
 Every failure throws, and the middleware answers 503. There is no breaker
 and no fail-open here, unlike the cache adapter: a request can do without
-its cache, and it cannot do without its session.
+its cache, and it cannot do without its session. For the same reason the
+module contributes a `sessions.valkey` readiness check, a `PING`, so a
+replica that cannot reach its session store stops reporting ready.
 
 ## Topics
 

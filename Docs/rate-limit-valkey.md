@@ -35,8 +35,8 @@ seam.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.47.0", traits: ["Web"]),
-.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.17.0", traits: ["Valkey"]),
+.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.56.0", traits: ["Web"]),
+.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.23.0", traits: ["Valkey"]),
 …
 .product(name: "AlulaRateLimitValkey", package: "alula-data"),
 ```
@@ -80,7 +80,7 @@ It sets a TTL equal to the time until the key is back at full, so idle keys
 are reclaimed by the server and nothing needs a sweeper.
 
 It is deliberately the same arithmetic, in the same order, as `GCRA.decide`
-in flight, in whole microseconds on both sides. That unit is load-bearing:
+in alula, in whole microseconds on both sides. That unit is load-bearing:
 Lua numbers are doubles, and subtracting timestamps near 1.8e15 in
 fractional seconds leaves enough error to report one permit fewer than are
 free. The integration suite runs the same scenarios against this store and
@@ -95,6 +95,11 @@ means depends on what is being limited. alula's `RateLimiting` middleware
 serves the request and logs loudly that it is not enforcing; a login
 throttle may well refuse instead. The store's job is to report the fact, and
 to be quick about it, which is what the pool's circuit breaker handles.
+
+A negative cost is refused before the script runs, with a
+`RateLimitStoreError` — the script computes `tat + cost * emission`, so a
+negative cost would hand permits back rather than fail. alula's in-memory
+store throws the same error for the same call.
 
 ## Configuration reference
 

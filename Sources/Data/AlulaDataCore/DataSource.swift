@@ -1,8 +1,8 @@
 import AlulaCore
 
-/// A pooled source of store connections. One per configured store —
-/// registered as a singleton in the Container; its long-running work is
-/// handed to the ServiceGroup via `AlulaModule.service` (Alula Core).
+/// A pooled source of store connections. One per configured store — built
+/// and provided by its datasource module; its long-running work is handed to
+/// the ServiceGroup via `AlulaModule.service` (Alula Core).
 ///
 /// This is the entire cross-store contract, and it is intentionally almost
 /// empty. If a future store package needs something this protocol doesn't
@@ -28,8 +28,8 @@ import AlulaCore
 ///
 /// `checkout()` returning promptly-or-throwing is a property of the
 /// *synchronous* primitive, not a policy for the whole seam — and it was read
-/// as the policy for far too long. `pool_size` became a hard concurrency
-/// ceiling: the (pool_size + 1)th simultaneous request did not queue behind
+/// as the policy for far too long. `pool-size` became a hard concurrency
+/// ceiling: the (pool-size + 1)th simultaneous request did not queue behind
 /// the others for a few milliseconds, it returned 500, and the person holding
 /// the browser saw an error because someone else was mid-request. Found by a
 /// test that created eight issues at once against a pool of four: four
@@ -81,7 +81,7 @@ public protocol DataSource: Sendable {
 
     /// How long ``withConnection(isolation:_:)`` queues before giving up.
     /// Defaults to `DataSourceSettings.defaultCheckoutTimeout`; drivers
-    /// surface `datasource.<name>.checkout_timeout_ms` here.
+    /// surface `datasource.<name>.checkout-timeout-ms` here.
     var checkoutTimeout: Duration { get }
 
     /// Return a previously checked-out connection to the pool.
@@ -163,7 +163,7 @@ extension DataSource {
 }
 
 /// The store-agnostic error vocabulary for pool checkout. Store packages may
-/// throw their own richer errors; these two cover the conditions every pool
+/// throw their own richer errors; these cover the conditions every pool
 /// shares, so store-agnostic callers (Actuator, middleware) can react without
 /// knowing the store.
 public enum DataSourceError: Error, Sendable, Equatable, CustomStringConvertible {

@@ -21,9 +21,10 @@ manual cleanup, no "migration 14 half-ran and now everything is stuck."
   instances across a fleet.
 - **CLI-first, library-callable, and never runs at boot by default.**
 
-Depends only on [PostgresNIO](https://github.com/vapor/postgres-nio) (plus
-swift-argument-parser for the CLI pieces). Works with Vapor, Hummingbird, or a bare
-Swift executable.
+The runner depends only on [PostgresNIO](https://github.com/vapor/postgres-nio) and
+swift-log, beside this package's own `AlulaMigrateCore`. The CLI adds swift-argument-parser and Alula Data Core, which it uses to read
+the database URL from `alula.yaml` the way the application does. Works with Vapor,
+Hummingbird, or a bare Swift executable.
 
 ---
 
@@ -40,7 +41,7 @@ that wanted only the cache.
 dependencies: [
     .package(
         url: "https://github.com/Alula-Framework/alula-data.git",
-        from: "0.7.0",
+        from: "0.23.0",
         traits: ["Postgres"]          // required — without it the products refuse to build
     ),
 ],
@@ -109,7 +110,17 @@ The filename is the contract: `<14-digit UTC timestamp>_<TypeName>.swift` must d
 type of exactly that name conforming to `Migration`. The timestamp prefix is the version
 and ordering key. Files that don't start with a digit are ignored (helpers are fine);
 files that start with a digit but are malformed **fail the build**, as do duplicate
-versions.
+versions and a file whose type does not match its name. Each problem is reported against
+the file's full path, with a code and a link to its page:
+
+```
+/app/Sources/Migrations/20260715143022_CreateUsers.swift:1:1: error: [ALD-MIGRATE-2002] the filename promises a Migration type named 'CreateUsers' but the file declares 'CreateUser'. Rename the file or the type so they match.
+    docs: https://github.com/Alula-Framework/alula-data/blob/main/Diagnostics/ALD-MIGRATE-2002.md
+```
+
+`ALD-MIGRATE-2001` is a malformed filename, `2002` a file and its type that disagree,
+`2003` two files with one version (the other file is attached as a `note:`). The pages
+are in [Diagnostics/](../Diagnostics/).
 
 ### The DSL
 
@@ -206,8 +217,43 @@ $ swift run migrate create AddTeams
 $ swift run migrate repair               # re-baseline checksums after a safe edit
 ```
 
-The connection URL comes from `--database-url`, `$ALULA_DATABASE_URL`, or
-`$DATABASE_URL`:
+The database comes from the first of these that is set:
+
+1. `--database-url`
+2. `$ALULA_DATABASE_URL`
+3. `$DATABASE_URL`
+4. `datasource.primary.url` in the application's `alula.yaml` — or
+   `datasource.<name>.url` with `--datasource <name>`.
+
+The fourth is read with the application's own configuration loader, so the
+environment overlay (`alula-{env}.yaml`), `${VAR}` substitution and
+`ALULA_DATASOURCE_<NAME>_URL` apply exactly as they do when the application runs,
+and the tool cannot migrate one database while the application uses another. The
+files are looked for in the current directory; `--config-directory` says where they
+are instead. An `alula.yaml` without a usable URL stops the run with
+`Error: <directory>/alula.yaml has no usable datasource.primary.url: <reason>`. With no
+flag, no variable and no `alula.yaml`, it stops with:
+
+```
+Error: no database URL. Pass --database-url, set ALULA_DATABASE_URL or DATABASE_URL (e.g. postgres://user:pass@localhost:5432/mydb), or run from the directory holding the application's alula.yaml (--config-directory), where datasource.primary.url names it.
+```
+
+Before every run that touches the database, `migrate` says on stderr which database
+it is about to use, and where that came from — stdout, which a script parses, is
+unchanged:
+
+```
+migrate: database 'app_dev' on db.internal:5432 (from datasource.primary.url in /srv/app/alula.yaml)
+```
+
+It then dials once, directly, so a wrong password or a closed port is answered at once
+with what the server or the network said, rather than after a minute of pool retries:
+
+```
+Error: could not connect to postgres at db.internal:5432, database 'app_dev': the server refused: password authentication failed for user "app" (SQLSTATE 28P01)
+```
+
+The URL:
 
 ```
 postgres://user:password@host:5432/database?sslmode=verify-full
@@ -216,6 +262,19 @@ postgres://user:password@host:5432/database?sslmode=verify-full
 `sslmode` follows libpq semantics (`disable`, `allow`, `prefer` (default), `require`,
 `verify-ca`, `verify-full`). Note that like libpq, `prefer`/`require` encrypt without
 verifying certificates — use `verify-full` in production over untrusted networks.
+
+Every command that connects also takes:
+
+| Flag | Default | |
+|---|---|---|
+| `--migrations-table` | `alula_migrations` | the bookkeeping table; may be schema-qualified |
+| `--lock-timeout` | `30` | seconds to wait for the advisory lock; `0` waits indefinitely |
+| `--advisory-lock-key` | the built-in key | change it only if it collides with the application's own locks |
+| `--fail-on-unknown-applied` | off | treat applied versions this binary does not know as an error |
+| `-v`, `--verbose` | off | log SQL statements and connection details |
+
+`rollback` takes `--dry-run` too, and `create` takes `--directory` for where the new
+file goes (default `Sources/Migrations` or `Migrations`, whichever exists).
 
 ### As a library
 
@@ -234,7 +293,8 @@ let repairs = try await migrator.repair()
 ```
 
 `AlulaMigrator.Configuration` exposes the bookkeeping table name, the advisory lock key,
-a `Logger`, an `onEvent` callback for progress/metrics, and `failOnUnknownApplied` (see
+the lock timeout (`lockTimeout`, 30 seconds by default, `nil` to wait indefinitely), a
+`Logger`, an `onEvent` callback for progress/metrics, and `failOnUnknownApplied` (see
 below).
 
 **Migrations are not run at boot by default, and we recommend keeping it that way.**
@@ -285,13 +345,10 @@ recorded on apply. Every subsequent run verifies applied migrations still match.
 was edited:
 
 ```
-error: migration 20260714120000_CreateUsers has been modified since it was applied
-(checksum mismatch). Applied migrations are immutable — create a new migration to make
-further changes.
+Error: migration 20260714120000_CreateUsers has been modified since it was applied (checksum mismatch). Applied migrations are immutable — create a new migration to make further changes.
   recorded checksum: 3f9a…
   current checksum:  b1c7…
-If the edit is confirmed-safe (formatting or comments only), run 'alula-migrate repair'
-to re-baseline the recorded checksum.
+If the edit is confirmed-safe (formatting or comments only), run 'alula-migrate repair' to re-baseline the recorded checksum.
 ```
 
 The message is pinned verbatim by a test, which is the only way a quoted error in a
@@ -330,15 +387,17 @@ try await migrator.migrate()
 ## Developing this package
 
 ```console
-$ swift build
-$ swift test                     # unit tests only (fake database)
+$ swift build --enable-all-traits
+$ swift test --enable-all-traits # unit tests only (fake database)
 
 # Integration tests need a real Postgres:
 $ docker run -d --name alula-migrate-pg -e POSTGRES_PASSWORD=alula \
     -e POSTGRES_DB=alula_test -p 127.0.0.1:55432:5432 postgres:16-alpine
 $ export ALULA_MIGRATE_TEST_DATABASE_URL="postgres://postgres:alula@127.0.0.1:55432/alula_test?sslmode=disable"
-$ swift test                     # now includes the integration suite
+$ swift test --enable-all-traits # now includes the integration suite
 ```
+
+`./scripts/test.sh` does all of this for you, as the README describes.
 
 The `ExampleMigrations` target and `alula-migrate-example` executable in this package
 are a complete, working consumer setup — the integration suite drives the built example

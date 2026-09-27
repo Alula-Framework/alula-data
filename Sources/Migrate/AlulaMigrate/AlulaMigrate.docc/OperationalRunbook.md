@@ -18,10 +18,14 @@ retrying. See <doc:UnwrappedMigrations>.
 ## Checksum mismatch
 
 ```
-Migration 20260715093000 (AddEmailIndex) has changed since it was applied.
-  recorded: 3f2a...
-  current:  91be...
+migration 20260715093000_AddEmailIndex has been modified since it was applied (checksum mismatch). Applied migrations are immutable — create a new migration to make further changes.
+  recorded checksum: 3f2a…
+  current checksum:  91be…
+If the edit is confirmed-safe (formatting or comments only), run 'alula-migrate repair' to re-baseline the recorded checksum.
 ```
+
+The CLI prints it after `Error: `; `status` shows the same migration as
+`MODIFIED since applied (checksum mismatch)`.
 
 A migration file was edited after it ran. The database no longer matches the
 code that claims to describe it, so the run halts rather than guessing.
@@ -48,9 +52,7 @@ environments drift apart.
 ## Advisory lock timeout
 
 ```
-Timed out after 30 seconds waiting for the migration advisory lock (key
-5064530418463322951). Another migration run is holding it, or a session
-leaked it.
+Timed out after 30.0 seconds waiting for the migration advisory lock (key 5065504251389955399). Another migration run is holding it, or a session leaked it. Check for a deploy that is stuck mid-migration before raising the timeout; `SELECT * FROM pg_locks WHERE locktype = 'advisory'` shows who holds it.
 ```
 
 Another migration is running, or one died without releasing the lock. Check
@@ -67,17 +69,29 @@ A `granted` lock held by a live, working session is a concurrent deploy —
 wait for it. A lock held by an idle session is a leak; that session can be
 terminated with `pg_terminate_backend(pid)`, which releases it.
 
-Set ``AlulaMigrator/Configuration/lockTimeout`` to `nil` to wait
-indefinitely, which is reasonable for an interactive run you are watching and
-a poor idea in an automated deploy.
+Set ``AlulaMigrator/Configuration/lockTimeout`` to `nil` — or pass
+`--lock-timeout 0` to the CLI — to wait indefinitely, which is reasonable for
+an interactive run you are watching and a poor idea in an automated deploy.
 
 ## Unknown applied migrations
 
+By default the CLI warns and carries on:
+
 ```
-The ledger contains versions this binary does not know about: 20260801120000
+warning: 20260801120000_AddInvoices is recorded as applied but not registered in this binary (older binary than schema, or a deleted file).
 ```
 
-The database has been migrated by a newer build than the one running now.
+With ``AlulaMigrator/Configuration/failOnUnknownApplied`` on, the run stops
+instead:
+
+```
+the database records applied migrations that this binary does not know about:
+  20260801120000_AddInvoices
+This usually means the binary is older than the schema (a rolling deploy), or migration files were deleted. Deploy a binary that includes these migrations, or set failOnUnknownApplied = false to proceed anyway.
+```
+
+Either way, the database has been migrated by a newer build than the one
+running now.
 
 Mid-deploy this is **normal** — an old pod sees a schema the new pods
 created. That is why the default is to warn and proceed.
@@ -110,10 +124,11 @@ destructive as applying, so it is gated the same way.
 ## Before a destructive deploy
 
 ```bash
-swift run migrate plan
+swift run migrate apply --dry-run
 ```
 
-Renders the exact SQL without running it. Review against that, not against
+Renders the exact SQL without running it, and ends with `Dry run: no changes
+were made.` `rollback --dry-run` does the same for a rollback. Review against that, not against
 the Swift that generates it.
 
 ## A note on running migrations at boot

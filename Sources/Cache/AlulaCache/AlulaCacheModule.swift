@@ -12,7 +12,7 @@ import AlulaCore
 /// Built in `init`, from configuration and an optional `adapter`:
 ///
 /// 1. `InMemoryCache` — the default store, its LRU bound read from
-///    `cache.memory.max_entries` so a bad value fails composition;
+///    `cache.memory.max-entries` so a bad value fails composition;
 /// 2. the store the runtime wraps — the `adapter` an adapter module provides,
 ///    matched by type in composition, or the in-memory store when none was
 ///    supplied. Absent adapter = single-instance deployment, the common case;
@@ -41,7 +41,7 @@ public struct AlulaCacheModule: AlulaModule {
 
     /// - Parameters:
     ///   - configuration: The loaded configuration, which the in-memory store
-    ///     reads `cache.memory.max_entries` and `cache.default_ttl` from. A
+    ///     reads `cache.memory.max-entries` and `cache.default-ttl` from. A
     ///     bad value fails composition rather than the first cache read.
     ///   - adapter: A distributed cache, from an adapter module. Nil means the
     ///     in-memory store — the single-instance case, and the default.

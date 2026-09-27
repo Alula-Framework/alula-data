@@ -4,7 +4,7 @@ The shared cache backend: `AlulaCache` over Valkey.
 
 ## Overview
 
-`AlulaCache`'s annotations do not change. Registering
+`AlulaCache`'s annotations do not change. Listing
 ``AlulaCacheValkeyModule`` swaps the in-memory backend for ``ValkeyCache``,
 and `@Cacheable` starts writing somewhere every node can read:
 
@@ -12,10 +12,10 @@ and `@Cacheable` starts writing somewhere every node can read:
 cache:
   valkey:
     url: redis://localhost:6379/2    # the path segment is the database index
-    command_timeout_ms: 250
-    unreachable_after_ms: 250
-    pool_size: 20
-    min_connections: 1
+    command-timeout-ms: 250
+    unreachable-after-ms: 250
+    pool-size: 20
+    min-connections: 1
 ```
 
 That is the whole point of `Cache` being a protocol. A single node develops

@@ -5,7 +5,7 @@ connection leasing and queueing, the config/health/lifecycle conventions
 every store package (Alula Data Postgres, and any future Mongo/Redis/
 Timescale package) follows — and re-exports `Changeset`, the
 validation/dirty-tracking layer, as one neutral result type a driver *may*
-consume. Built on Alula Core's `Container` and `AlulaModule`.
+consume. Built on Alula Core's `AlulaModule`.
 
 Note what "may" is doing there. Alula Data Valkey applies changesets
 directly; Alula Data Postgres does not use them at all, because Hangar sits
@@ -36,7 +36,8 @@ Exact test counts are deliberately not written down here. They were, and they
 were wrong within a release — a number that has to be hand-updated is a number
 that ends up lying.
 
-Dependencies are Alula Core, swift-changeset, and swift-service-lifecycle.
+Dependencies are Alula Core, Alula Diagnostics (for the startup error's
+code), and swift-changeset.
 
 ## What's here
 
@@ -163,15 +164,31 @@ that can await queues for up to `datasource.<name>.checkout-timeout-ms`
 (default 5 seconds) and fails with `DataSourceError.poolExhausted` only if
 nothing comes back in that time.
 
+`DataSourceError` has four cases, and a web layer answers each differently
+because the error conforms to alula's `TemporarilyUnavailable`:
+
+| Case | Means | A request gets |
+|---|---|---|
+| `poolExhausted` | every connection is in use | `503`, `Retry-After: 1` |
+| `unreachable` | the pool has no connections and reconnecting keeps failing, with the reason | `503`, `Retry-After: 5` |
+| `closed` | the pool's service has shut down | `503`, no `Retry-After` |
+| `notStarted` | a checkout arrived before the pool started — a bug in the caller | `500` |
+
+The Postgres pool reports `unreachable` instead of `poolExhausted` when it has
+no connections because the database is down, so the message stops telling an
+operator to raise `pool-size` during an outage. Once an outage has lasted
+longer than the caller's checkout timeout, a waiting checkout fails at once
+rather than waiting out the timeout to be told the same thing.
+
 This page used to say the opposite — "a hard concurrency ceiling … there is no
 waiting to time out" — and that *was* true, and was a bug. `checkout()` is
-synchronous by contract, because Alula Core's transaction coordinator begins
-transactions synchronously and a pool that parked that caller would deadlock
-it. But "the synchronous primitive cannot wait" was read as "the seam does not
-queue", and so the (pool-size + 1)th concurrent request returned 500 instead of
-waiting a few milliseconds for the one ahead of it. Found by an application
-test that created eight issues at once against a pool of four: four succeeded,
-four failed immediately.
+synchronous by contract, because Alula Core's transaction coordinator (since
+removed) began transactions synchronously and a pool that parked that caller
+would deadlock it. But "the synchronous primitive cannot wait" was read as
+"the seam does not queue", and so the (pool-size + 1)th concurrent request
+returned 500 instead of waiting a few milliseconds for the one ahead of it.
+Found by an application test that created eight issues at once against a pool
+of four: four succeeded, four failed immediately.
 
 So there are two checkouts:
 
@@ -297,7 +314,8 @@ Changeset decisions:
 
 ## Dependency policy
 
-`AlulaDataCore` depends on `AlulaCore` alone (which re-exports
-`AlulaConfig`). `swift-service-lifecycle` appears only in the test target,
-for service-owning module fixtures. Nothing else — this package is the seam,
-not the plumbing.
+`AlulaDataCore` depends on `AlulaCore` (which re-exports `AlulaConfig`),
+`AlulaDiagnostics` for `DataSourceStartupError`'s code, and swift-changeset.
+`swift-service-lifecycle` appears only in the test target, for
+service-owning module fixtures. Nothing else — this package is the seam, not
+the plumbing.

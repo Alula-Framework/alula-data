@@ -44,7 +44,7 @@ public final class PostgresDataSource: DataSource, Sendable {
     /// from a hand-made `PostgresConnection.Configuration` instead.
     public let url: PostgresDataSourceURL?
     /// How long `withConnection` queues before `poolExhausted`, from
-    /// `datasource.<name>.checkout_timeout_ms`.
+    /// `datasource.<name>.checkout-timeout-ms`.
     public let checkoutTimeout: Duration
 
     private let logger: Logger
@@ -773,7 +773,7 @@ public final class PostgresDataSource: DataSource, Sendable {
     /// connection mid-transaction from an idle one. For a while it could not —
     /// the coordinator that used to call this went away with
     /// `@Transactional` — and `DISCARD ALL` failing inside a transaction block
-    /// was the only guard, which `reset_on_release: false` removed: the next
+    /// was the only guard, which `reset-on-release: false` removed: the next
     /// borrower inherited the open transaction. Now `release`'s
     /// `.rollbackFirst` path covers every setting.
     func markTransactionOpen(_ connection: PostgresConnection) {

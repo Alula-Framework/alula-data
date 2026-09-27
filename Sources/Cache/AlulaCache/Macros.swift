@@ -17,7 +17,7 @@
 /// Concurrent same-key callers coalesce.
 ///
 /// `ttl: nil` defers to the policy: `cache.namespaces.<namespace>`, then
-/// `cache.default_ttl`, then no expiry.
+/// `cache.default-ttl`, then no expiry.
 @attached(body)
 public macro Cacheable(namespace: String, ttl: Duration? = nil, excluding: [String] = []) =
     #externalMacro(module: "AlulaCacheMacrosImpl", type: "CacheableMacro")

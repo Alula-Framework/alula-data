@@ -11,11 +11,11 @@ public enum ValkeyCacheConfigKey {
     /// `cache.valkey.url` — required. `valkey://` and `redis://` are exact
     /// synonyms (`valkeys://`/`rediss://` for TLS), same as Data Valkey
     public static let url = "cache.valkey.url"
-    /// `cache.valkey.command_timeout_ms` — short operation timeout,
+    /// `cache.valkey.command-timeout-ms` — short operation timeout,
     /// bounding a command that is already executing on a leased
     /// connection. Integer milliseconds; optional.
     public static let commandTimeoutMilliseconds = "cache.valkey.command-timeout-ms"
-    /// `cache.valkey.unreachable_after_ms` — the other half of the timeout
+    /// `cache.valkey.unreachable-after-ms` — the other half of the timeout
     /// story, and the one that actually matters when the server is
     /// down: how long the pool may keep trying to establish a connection
     /// before declaring the server unreachable and failing operations
@@ -23,18 +23,18 @@ public enum ValkeyCacheConfigKey {
     /// `connectionPool.circuitBreakerTripAfter`. Defaults to the command
     /// timeout, so one knob covers both phases unless you split them.
     public static let unreachableAfterMilliseconds = "cache.valkey.unreachable-after-ms"
-    /// `cache.valkey.pool_size` — maximum connections. The ceiling on
+    /// `cache.valkey.pool-size` — maximum connections. The ceiling on
     /// concurrent in-flight cache commands; lease requests beyond it queue.
     public static let poolSize = "cache.valkey.pool-size"
-    /// `cache.valkey.min_connections` — connections kept warm, so a cache
+    /// `cache.valkey.min-connections` — connections kept warm, so a cache
     /// read on a cold path does not pay a dial and the pool discovers an
     /// unreachable server at startup rather than on a request. Defaults
     /// to 1; 0 restores the driver's lazy behavior.
     public static let minimumConnections = "cache.valkey.min-connections"
 }
 
-/// Loaded, validated settings — read at the module factory, which runs at
-/// `freeze()`, so a bad value fails bootstrap, never the first request.
+/// Loaded, validated settings — read when the module is built at
+/// composition, so a bad value fails bootstrap, never the first request.
 public struct ValkeyCacheSettings: Sendable, Equatable {
     ///: short by default. Deliberately tighter than a data-store
     /// timeout — the fallback here is a computation the caller was prepared

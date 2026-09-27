@@ -17,8 +17,8 @@ import PostgresNIO
 ///   `PostgresConnection.Configuration` you built yourself. That initializer
 ///   did not exist while this sentence recommended it.
 ///
-/// Parsing is eager and loud: a malformed URL throws during `freeze()`'s
-/// singleton construction, failing bootstrap before any request is served.
+/// Parsing is eager and loud: a malformed URL throws when the module is built
+/// at composition, failing bootstrap before any request is served.
 public struct PostgresDataSourceURL: Sendable, Equatable {
     /// `sslmode`, with libpq's meanings.
     ///

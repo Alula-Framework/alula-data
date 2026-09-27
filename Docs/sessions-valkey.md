@@ -51,8 +51,8 @@ for the same reasons the cache adapter is not.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.47.0", traits: ["Web"]),
-.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.17.0", traits: ["Valkey"]),
+.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.56.0", traits: ["Web"]),
+.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.23.0", traits: ["Valkey"]),
 …
 .product(name: "AlulaSessionsValkey", package: "alula-data"),
 ```
@@ -75,6 +75,11 @@ sessions:
 Listing the module is the whole change. Configuring the URL *without*
 listing it is refused at startup by `AlulaSessionsModule`, because a
 configuration nobody reads is the failure nobody notices.
+
+The module also contributes a readiness check named `sessions.valkey`, a
+`PING` on its client. Without the store every signed-in request fails, which
+is as much "cannot serve" as a lost database, so a replica that cannot reach
+it stops reporting ready.
 
 ## Configuration reference
 

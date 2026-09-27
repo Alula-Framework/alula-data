@@ -14,16 +14,16 @@ public enum ValkeyPubSubConfigKey {
     /// `pubsub.valkey.channel` — the one channel every node publishes to and
     /// subscribes to. Optional.
     public static let channel = "pubsub.valkey.channel"
-    /// `pubsub.valkey.command_timeout_ms` — bounds a command already
+    /// `pubsub.valkey.command-timeout-ms` — bounds a command already
     /// executing on a leased connection. Optional.
     public static let commandTimeoutMilliseconds = "pubsub.valkey.command-timeout-ms"
-    /// `pubsub.valkey.unreachable_after_ms` — the other half of the timeout
+    /// `pubsub.valkey.unreachable-after-ms` — the other half of the timeout
     /// story, and the one that matters when the server is down: how long the
     /// pool may keep trying to connect before failing operations immediately
     /// rather than queueing them behind a dial that will not complete.
     /// Optional; defaults to the command timeout.
     public static let unreachableAfterMilliseconds = "pubsub.valkey.unreachable-after-ms"
-    /// `pubsub.valkey.retry_delay_ms` — the first delay before re-subscribing
+    /// `pubsub.valkey.retry-delay-ms` — the first delay before re-subscribing
     /// after the connection drops. It grows and is jittered from there.
     public static let retryDelayMilliseconds = "pubsub.valkey.retry-delay-ms"
 }
@@ -37,8 +37,8 @@ public enum ValkeyPubSubConfigKey {
 ///     channel: alula-pubsub        # optional
 /// ```
 ///
-/// Parsed at the component factory, which runs at `freeze()` — so a malformed
-/// URL fails bootstrap rather than the first broadcast. Same posture as every
+/// Parsed when the module is built at composition — so a malformed URL fails
+/// bootstrap rather than the first broadcast. Same posture as every
 /// other driver here.
 ///
 /// ## Why this shares the cache adapter's shapes (delta PV1)

@@ -9,7 +9,7 @@ import Valkey
 ///
 /// Kebab-case, with durations as duration strings (`250ms`, `1s`), matching
 /// the `sessions.*` keys on the alula side that these sit beside — rather
-/// than the cache adapter's `command_timeout_ms` integers, which predate the
+/// than the cache adapter's `command-timeout-ms` integers, which predate the
 /// convention.
 public enum ValkeySessionConfigKey {
     public static let root = "sessions.valkey"

@@ -4,8 +4,10 @@
 
 ## Meaning
 
-Before anything else started, a data source dialled its database and could
-not connect. The report names the data source, the host, port and database it
+At startup, a data source dialled its database and could not connect. A
+Postgres data source dials in a before-start hook, before any other service
+starts, so this is the only thing reported; a Valkey data source dials when
+its service starts. The report names the data source, the host, port and database it
 dialled, and what the network or the server answered — never the URL's
 password.
 

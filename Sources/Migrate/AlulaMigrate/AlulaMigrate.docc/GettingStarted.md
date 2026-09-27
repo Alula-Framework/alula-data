@@ -10,7 +10,7 @@ so a migration can be rendered and reviewed before it runs.
 
 ```swift
 struct CreateUsers: Migration {
-    static func up(_ schema: SchemaBuilder) {
+    func up(_ schema: SchemaBuilder) {
         schema.createTable("users") { t in
             t.uuid("id").primaryKey()
             t.text("email").notNull().unique()
@@ -19,7 +19,7 @@ struct CreateUsers: Migration {
         }
     }
 
-    static func down(_ schema: SchemaBuilder) {
+    func down(_ schema: SchemaBuilder) {
         schema.dropTable("users")
     }
 }
@@ -44,7 +44,7 @@ for a migration to exist but never run because someone forgot to register it.
 // the migration products are declared but hard-error at build time.
 .package(
     url: "https://github.com/Alula-Framework/alula-data.git",
-    from: "0.17.0",
+    from: "0.23.0",
     traits: ["Postgres"]
 )
 
@@ -55,40 +55,66 @@ for a migration to exist but never run because someone forgot to register it.
 )
 ```
 
+The plugin generates a public function, `_allMigrations()`, in that target:
+every migration it found, ordered by version.
+
 ## Running them
 
 ```swift
+import AlulaMigrate
+import MyAppMigrations
+
 let migrator = AlulaMigrator(
     client: postgresClient,
-    migrations: MyAppMigrations.all
+    migrations: _allMigrations()
 )
 
 let applied = try await migrator.migrate()
 ```
 
-Or from the CLI, which is the more usual deploy step:
+Or from the CLI, which is the more usual deploy step. A `migrate` executable
+target depending on `AlulaMigrateCLI` and the migrations target needs only:
+
+```swift
+import AlulaMigrate
+import AlulaMigrateCLI
+import MyAppMigrations
+
+@main
+struct Migrate: MigrateTool {
+    static var migrations: [MigrationEntry] { _allMigrations() }
+}
+```
 
 ```bash
 swift run migrate status            # what is applied, what is pending
-swift run migrate plan              # the exact SQL, without running it
+swift run migrate apply --dry-run   # the exact SQL, without running it
 swift run migrate apply             # run everything pending
 swift run migrate rollback --steps 1
 ```
 
-`plan` is worth using before anything destructive. It renders the statements
-a run would execute, so a review happens against the SQL rather than against
-the Swift that generates it.
+`apply --dry-run` is worth using before anything destructive. It renders the
+statements a run would execute, so a review happens against the SQL rather
+than against the Swift that generates it. `rollback --dry-run` does the same
+for a rollback.
+
+The CLI finds the database in `--database-url`, `$ALULA_DATABASE_URL` or
+`$DATABASE_URL`, and otherwise in the application's own `alula.yaml`
+(`datasource.primary.url`, or another datasource with `--datasource`).
 
 ## Checking before you commit
 
 `status` reports three things per migration: applied, pending, or drifted.
 
 ```
-version         name              state
-20260714120000  CreateUsers       applied
-20260715093000  AddEmailIndex     applied (checksum mismatch)
-20260716101500  AddTeams          pending
+Applied migrations:
+  20260714120000_CreateUsers  applied 2026-07-14T12:05:31Z  ok
+  20260715093000_AddEmailIndex  applied 2026-07-15T09:31:02Z  MODIFIED since applied (checksum mismatch) — see 'repair'
+Pending migrations:
+  20260716101500_AddTeams  (transactional)
 ```
+
+`status --json` prints the same as JSON, for a script.
 
 A checksum mismatch means the file changed after it was applied. The next
 `apply` will refuse to run until you either restore the file or re-baseline
@@ -99,7 +125,7 @@ it with `repair` — see <doc:OperationalRunbook>.
 ```swift
 AlulaMigrator(
     client: client,
-    migrations: MyAppMigrations.all,
+    migrations: _allMigrations(),
     configuration: .init(
         migrationsTable: "ops.alula_migrations",
         lockTimeout: .seconds(60),

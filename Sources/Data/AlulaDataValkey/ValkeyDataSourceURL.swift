@@ -4,8 +4,8 @@ import Valkey
 
 /// The parsed form of `datasource.<name>.url` — Alula Data
 /// Core hands the URL over uninterpreted; this package parses it, and a
-/// malformed URL fails at pool construction (freeze()'s eager singleton
-/// construction), never at the first command.
+/// malformed URL fails at pool construction (when the module is built at
+/// composition), never at the first command.
 ///
 /// Accepted shapes:
 ///

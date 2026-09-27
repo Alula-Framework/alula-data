@@ -6,11 +6,12 @@ single-node features into clustered ones.
 ## Overview
 
 `AlulaPubSub` delivers within a process on its own. This is the hop
-*between* processes, and registering it is the entire change:
+*between* processes, and listing it is the entire change:
 
 ```swift
 await Alula.run(configuration: try Configuration.load(), modules: [
-    AlulaPubSubValkeyModule.self,   // pulls in AlulaPubSubModule
+    AlulaPubSubValkeyModule.self,
+    AlulaPubSubModule.self,
     AppModule.self,
 ], composedBy: alulaComposeModules)
 ```
@@ -30,14 +31,19 @@ database 2 — and the rest of `pubsub.valkey.*` is optional:
 |---|---|---|
 | `pubsub.valkey.url` | — | required |
 | `pubsub.valkey.channel` | `alula-pubsub` | the one channel every node shares |
-| `pubsub.valkey.command_timeout_ms` | 250 | a command on a leased connection |
-| `pubsub.valkey.unreachable_after_ms` | the command timeout | how long the pool tries to connect before failing fast |
-| `pubsub.valkey.retry_delay_ms` | 1000 | the first delay before re-subscribing |
+| `pubsub.valkey.command-timeout-ms` | 250 | a command on a leased connection |
+| `pubsub.valkey.unreachable-after-ms` | the command timeout | how long the pool tries to connect before failing fast |
+| `pubsub.valkey.retry-delay-ms` | 1000 | the first delay before re-subscribing |
 
-Nothing that publishes or subscribes changes. `AlulaPubSubModule` composes
-by *presence*: its `any PubSub` factory runs at `freeze()`, finds a registered
-`DistributedPubSubAdapter`, and hands the application a `ClusteredPubSub`
-instead of the local core.
+Nothing that publishes or subscribes changes. ``AlulaPubSubValkeyModule``
+provides an `adapter: any DistributedPubSubAdapter`; the composition root
+hands it to `AlulaPubSubModule`, which then gives the application a
+`ClusteredPubSub` instead of the local core and runs the relay. `alula new`
+writes the `composedBy:` argument that does this.
+
+The module also contributes a `pubsub.valkey` readiness check, a `PING` on
+the publishing client: without Valkey, messages published here reach no other
+node.
 
 Three things become clustered at once, because all three are built on PubSub:
 
@@ -88,7 +94,7 @@ A finished `incoming()` stream means "this adapter is done for good", so a
 Valkey restart must not finish it. The subscribe loop retries and the stream
 stays open; the relay above never learns it happened, beyond a gap in delivery.
 
-The delay starts at `pubsub.valkey.retry_delay_ms`, doubles to a 30-second cap,
+The delay starts at `pubsub.valkey.retry-delay-ms`, doubles to a 30-second cap,
 and is jittered by ±50%. The jitter is the point: every node in a cluster loses
 the server at the same instant, so a fixed delay has all of them reconnect at
 the same instant too — a thundering herd aimed at a server that has just come

@@ -26,11 +26,11 @@ Both are opt-in — name a driver to get it:
 
 ```swift
 // In-memory cache and the data protocols. No driver resolved at all.
-.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.17.0")
+.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.23.0")
 
 // With PostgreSQL.
 .package(url: "https://github.com/Alula-Framework/alula-data.git",
-         from: "0.17.0", traits: ["Postgres"])
+         from: "0.23.0", traits: ["Postgres"])
 ```
 
 **Swift 6.3 or later is required**: through 6.2.x, SwiftPM did not resolve a
@@ -82,7 +82,8 @@ consumer and asserting no gated dependency reached it.
 | | Requirement |
 | --- | --- |
 | Swift | 6.3+ — see [Traits](#traits) for why |
-| alula | **0.21.2 or later** |
+| alula | **0.56.0 or later** (Package.swift's floor) |
+| Hangar | 0.14.0 or later (resolved only with the `Postgres` trait) |
 | Deployment target | macOS 15+, or Linux |
 | Building on macOS | the macOS 26 SDK (Xcode 26) |
 
@@ -90,11 +91,28 @@ Strict concurrency throughout.
 
 The last two rows are different requirements. What you build runs on macOS 15;
 *compiling* it on a Mac needs the newer SDK, because alula's configuration
-layer resolves to FoundationEssentials only where the SDK provides it. And
-alula 0.21.2 is the floor rather than a suggestion: every earlier release
-calls a macOS 26+ API at a macOS 15 deployment target, so a Mac could not build
-this package against them at any SDK. Verified on `macos-26`, which is what the
-CI job runs.
+layer resolves to FoundationEssentials only where the SDK provides it. alula
+releases before 0.21.2 also call a macOS 26+ API at a macOS 15 deployment
+target, so a Mac could not build against them at any SDK; the 0.56.0 floor is
+well past that. Verified on `macos-26`, which is what the CI job runs.
+
+## Diagnostics
+
+Errors this package reports at build time or at startup carry a stable code,
+and each code has a page in [Diagnostics/](Diagnostics/) saying what it means,
+why it is rejected, and how to fix it:
+
+| Code | Reported by | Page |
+| --- | --- | --- |
+| `ALD-CACHE-1001`–`1005` | the `@Cacheable`, `@CachePut` and `@CacheEvict` macros, at compile time | [1001](Diagnostics/ALD-CACHE-1001.md), [1002](Diagnostics/ALD-CACHE-1002.md), [1003](Diagnostics/ALD-CACHE-1003.md), [1004](Diagnostics/ALD-CACHE-1004.md), [1005](Diagnostics/ALD-CACHE-1005.md) |
+| `ALD-MIGRATE-2001`–`2003` | `AlulaMigratePlugin`, when it builds the migrations target | [2001](Diagnostics/ALD-MIGRATE-2001.md), [2002](Diagnostics/ALD-MIGRATE-2002.md), [2003](Diagnostics/ALD-MIGRATE-2003.md) |
+| `ALD-DATA-1001` | a data source that cannot connect at startup | [1001](Diagnostics/ALD-DATA-1001.md) |
+
+A migration diagnostic is printed as `path:1:1: error: [ALD-MIGRATE-2001] …`
+followed by a `docs:` line with the page's URL, so SwiftPM attaches it to the
+file. `alula explain <CODE>` from
+[alula-cli](https://github.com/Alula-Framework/alula-cli) prints the link to
+an alula-data code's page; the page itself lives here, not in alula.
 
 ## Running the tests
 

@@ -11,7 +11,7 @@ exactly as it was, bookkeeping included.
 
 ```swift
 struct CreateUsers: Migration {
-    static func up(_ schema: SchemaBuilder) {
+    func up(_ schema: SchemaBuilder) {
         schema.createTable("users") { t in
             t.uuid("id").primaryKey()
             t.text("email").notNull().unique()
@@ -19,7 +19,7 @@ struct CreateUsers: Migration {
         }
     }
 
-    static func down(_ schema: SchemaBuilder) {
+    func down(_ schema: SchemaBuilder) {
         schema.dropTable("users")
     }
 }
@@ -27,6 +27,7 @@ struct CreateUsers: Migration {
 
 ```bash
 swift run migrate status
+swift run migrate apply --dry-run   # the SQL, without running it
 swift run migrate apply
 swift run migrate rollback --steps 1
 ```
@@ -57,7 +58,7 @@ Postgres, not this library. Such a migration opts out:
 struct AddEmailIndex: Migration {
     static let wrapInTransaction = false
 
-    static func up(_ schema: SchemaBuilder) {
+    func up(_ schema: SchemaBuilder) {
         schema.createIndex(on: "users", columns: ["email"], concurrently: true)
     }
 }
