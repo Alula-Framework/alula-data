@@ -187,6 +187,20 @@ jobs:
       - name: Lean consumer resolves no gated dependency
         run: ./CI/check-lean-consumer.sh
 
+  quotes:
+    # A diagnostic quoted in the docs goes stale silently when its message is
+    # reworded; nothing else reads the docs against the source. This fails
+    # when a quote's fixed wording is no longer in Sources. No Swift needed.
+    name: Quoted diagnostics match the source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check quoted diagnostics
+        run: >-
+          python3 CI/check-diagnostic-quotes.py
+          --docs README.md Docs Diagnostics Sources
+          --source ALD=Sources
+
   lint:
     # Advisory only. The merged packages predate a shared .swift-format
     # config; the macro fixture suites in particular hold expected-expansion
