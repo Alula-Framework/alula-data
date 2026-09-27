@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-09-27
+
+Requires alula 0.56.0 and Hangar 0.14.0.
+
+### Changed
+
+- **Hangar's errors reach a client as what they are.** Hangar now says which
+  of its errors are transient and which are the caller's input; Alula Data,
+  which depends on both Hangar and Alula, conforms them:
+  - `DatabaseError` with `isTransient` — a deadlock, a serialization
+    failure, a lock not available, a statement cancelled, the server
+    starting up or shutting down — is `TemporarilyUnavailable`: `503` with
+    `Retry-After: 1`.
+  - `DatabaseConnectionError` for a database that cannot be reached, or a
+    connection that dropped, is `503` with `Retry-After: 5`. A refused login
+    or a TLS failure is configuration, and stays a `500`.
+  - `HangarError.unknownFilterField` and `.invalidFilterValue` are
+    `RejectedInput`: `400`, with a message that names only the field the
+    request gave, never the table.
+
+  Each was an opaque `500`.
+
 ## [0.22.0] - 2026-09-26
 
 ### Added
