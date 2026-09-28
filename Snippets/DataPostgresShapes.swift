@@ -22,8 +22,8 @@ struct User: Encodable, Equatable, Sendable {
 // "Using it": a repository holding the pool.
 @Repository
 struct UserRepository {
-    // alula:hand-registered — the pool comes from PostgresDataModule, which
-    // the registration generator cannot see; the marker silences its warning.
+    // The pool is PostgresDataModule's: the build finds it among the
+    // modules the application composes.
     @Inject var pool: PostgresDataSource
 
     func find(byEmail email: String) async throws -> User? {

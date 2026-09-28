@@ -49,8 +49,8 @@ returns it when the closure ends:
 ```swift
 @Repository
 struct UserRepository {
-    // alula:hand-registered — the pool comes from PostgresDataModule, which
-    // the registration generator cannot see; the marker silences its warning.
+    // The pool is PostgresDataModule's: the build finds it among the
+    // modules the application composes.
     @Inject var pool: PostgresDataSource
 
     func find(byEmail email: String) async throws -> User? {
@@ -258,7 +258,7 @@ Three ways out, in the order they are usually worth reaching for:
    same database (`datasource.exports.pool-size: 2`) bounds the damage to
    itself.
 3. **Bound the response.** A write timeout on the streamed body — the same
-   idea as `alula.channels.write-timeout-seconds` — turns an indefinite hold
+   idea as `channels.write-timeout-seconds` — turns an indefinite hold
    into a failed download.
 
 Nothing here is a defect in either layer; it is what the two correct
