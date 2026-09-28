@@ -41,7 +41,7 @@ that wanted only the cache.
 dependencies: [
     .package(
         url: "https://github.com/Alula-Framework/alula-data.git",
-        from: "0.23.0",
+        from: "0.24.0",
         traits: ["Postgres"]          // required — without it the products refuse to build
     ),
 ],
@@ -361,7 +361,8 @@ too: a drifted `down` no longer matches what was applied.
 
 **Concurrency.** The whole run holds `pg_advisory_lock` on a constant key (the ASCII
 bytes `"FLIGHTMG"`, frozen across the rename; configurable). N instances starting at once serialize; latecomers
-find nothing pending.
+find nothing pending. What that means for a fleet deploy — including a waiting instance
+outlasting `lockTimeout` — is in [operations.md](operations.md#migrations-in-a-deployment).
 
 **Unknown applied versions.** If the ledger records versions this binary doesn't know
 (an older binary mid-rolling-deploy, or a deleted migration file), the default is to warn

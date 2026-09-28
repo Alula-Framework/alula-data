@@ -23,6 +23,13 @@ public final class ValkeyRateLimitStore: RateLimitStore, Sendable {
     private let keyPrefix: String
     private let logger: Logger
 
+    /// A store with its own client. Dials nothing, and `client.run()` must be
+    /// running before it is used — the module's service arranges that.
+    ///
+    /// - Parameters:
+    ///   - settings: `rate-limit.valkey.*`, including the key prefix.
+    ///   - logger: Where the client logs.
+    /// - Throws: An error building the client's TLS configuration.
     public init(settings: ValkeyRateLimitSettings, logger: Logger? = nil) throws {
         let logger = logger ?? Logger(label: "alula.rate-limit.valkey")
         self.client = ValkeyClient(
@@ -33,6 +40,18 @@ public final class ValkeyRateLimitStore: RateLimitStore, Sendable {
         self.logger = logger
     }
 
+    /// Spends `cost` permits of `quota` under `key`, if they are free, and
+    /// says what is left — atomically, across every replica, on the server's
+    /// clock.
+    ///
+    /// A `cost` of zero reports the state and spends nothing. A refused call
+    /// spends nothing either, so retrying does not push its own wait further
+    /// out.
+    ///
+    /// - Throws: `RateLimitStoreError` for a negative `cost` (before anything
+    ///   is sent), and for any failure to reach the server or read its
+    ///   answer. Nothing here allows or refuses on failure; the caller
+    ///   decides.
     public func consume(key: String, cost: Int, quota: RateLimitQuota) async throws
         -> RateLimitDecision
     {

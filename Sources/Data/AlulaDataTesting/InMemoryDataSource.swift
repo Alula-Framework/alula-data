@@ -44,10 +44,12 @@ public final class InMemoryConnection: Sendable {
 public final class InMemoryDataSource: DataSource, Sendable {
     public typealias Connection = InMemoryConnection
 
+    /// The datasource's name, as in `datasource.<name>`.
     public let name: String
+    /// The most connections it will create; past that, callers queue.
     public let poolSize: Int
     /// How long `withConnection` queues before `poolExhausted` (core delta
-    /// D2). The fake parks callers in core's own `ConnectionWaiters`, the same
+    /// D8). The fake parks callers in core's own `ConnectionWaiters`, the same
     /// one both real drivers use, so a test written against this exercises the
     /// queueing machinery rather than a simplified stand-in.
     public let checkoutTimeout: Duration
@@ -64,6 +66,13 @@ public final class InMemoryDataSource: DataSource, Sendable {
     private let pingFailure = Mutex<(any Error)?>(nil)
     private let waiters = ConnectionWaiters()
 
+    /// A source ready to use at once: there is nothing to start.
+    ///
+    /// - Parameters:
+    ///   - name: The datasource's name, used in errors.
+    ///   - poolSize: The most connections it will create. Must be at least 1.
+    ///   - checkoutTimeout: How long `withConnection` queues when all are
+    ///     out.
     public init(
         name: String = PrimaryDataSource.name,
         poolSize: Int = 4,
@@ -76,6 +85,7 @@ public final class InMemoryDataSource: DataSource, Sendable {
         self.state = Mutex(PoolState())
     }
 
+    /// A source sized by `settings`; its URL is ignored.
     public convenience init(settings: DataSourceSettings) {
         self.init(
             name: settings.name,
@@ -179,6 +189,7 @@ public final class InMemoryDataSource: DataSource, Sendable {
         state.withLock { $0.totalCheckouts }
     }
 
+    /// Whether ``close()`` has run; checkouts then throw `closed`.
     public var isClosed: Bool {
         state.withLock { $0.closed }
     }

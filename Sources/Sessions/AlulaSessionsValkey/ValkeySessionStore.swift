@@ -33,6 +33,13 @@ public final class ValkeySessionStore: OwnerIndexedSessionStore, Sendable {
     public let client: ValkeyClient
     private let logger: Logger
 
+    /// A store with its own client. Dials nothing, and `client.run()` must be
+    /// running before it is used — the module's service arranges that.
+    ///
+    /// - Parameters:
+    ///   - settings: `sessions.valkey.*`.
+    ///   - logger: Where the client logs.
+    /// - Throws: An error building the client's TLS configuration.
     public init(settings: ValkeySessionSettings, logger: Logger? = nil) throws {
         let logger = logger ?? Logger(label: "alula.sessions.valkey")
         self.client = ValkeyClient(
@@ -42,6 +49,9 @@ public final class ValkeySessionStore: OwnerIndexedSessionStore, Sendable {
         self.logger = logger
     }
 
+    /// The record under `id`, or `nil` when there is none — expired and
+    /// never-existed read the same. An unreachable server throws
+    /// `SessionStoreError`; it never reads as an empty session.
     public func load(_ id: SessionID) async throws -> Data? {
         do {
             return try await client.get(key(id)).map { Data($0) }
@@ -50,10 +60,19 @@ public final class ValkeySessionStore: OwnerIndexedSessionStore, Sendable {
         }
     }
 
+    /// Stores `record` under `id` for `ttl`, replacing what was there and
+    /// restarting its expiry. A non-positive `ttl` deletes instead.
     public func save(_ id: SessionID, _ record: Data, ttl: Duration) async throws {
         try await save(id, record, ttl: ttl, owner: nil)
     }
 
+    /// ``save(_:_:ttl:)``, and with an `owner`, also adds `id` to that
+    /// owner's index for ``deleteSessions(ownedBy:keeping:)``.
+    ///
+    /// Not atomic: the record is written first and the index after, as
+    /// separate commands. A failure in between throws, leaving the session
+    /// stored but missing from the index, where signing out everywhere will
+    /// not find it.
     public func save(_ id: SessionID, _ record: Data, ttl: Duration, owner: String?) async throws {
         // `PX` with a non-positive timeout is an error from the server, and a
         // TTL that has already run out is a session already gone: delete,
@@ -113,6 +132,9 @@ public final class ValkeySessionStore: OwnerIndexedSessionStore, Sendable {
         }
     }
 
+    /// Removes the session. Deleting one that is not there succeeds. Its
+    /// owner index entry, if any, is pruned later by
+    /// ``deleteSessions(ownedBy:keeping:)``.
     public func delete(_ id: SessionID) async throws {
         do {
             _ = try await client.unlink(keys: [key(id)])

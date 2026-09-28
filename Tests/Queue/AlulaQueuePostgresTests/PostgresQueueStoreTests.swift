@@ -195,6 +195,25 @@ struct PostgresQueueStoreTests {
         }
     }
 
+    @Test("a hand-back gives the attempt back, even the last, and stays fenced")
+    func handBack() async throws {
+        for (label, store) in try await stores() {
+            let id = try await store.enqueue(job(maxAttempts: 1)).id
+            let first = try await store.claim(
+                queue: "default", kinds: ["Greet"], limit: 1, now: t0, leaseUntil: t0 + 30)
+            #expect(first.map(\.attempt) == [1], "\(label)")
+            #expect(
+                try await store.handBack(id, attempt: 1, runAt: t0, error: "shutdown"), "\(label)")
+            #expect(
+                try await store.handBack(id, attempt: 1, runAt: t0, error: "again") == false,
+                "\(label): no longer running")
+            let again = try await store.claim(
+                queue: "default", kinds: ["Greet"], limit: 1, now: t0 + 1, leaseUntil: t0 + 31)
+            #expect(again.map(\.attempt) == [1], "\(label): runs, rather than discards")
+            #expect(try await store.complete(id, attempt: 1, at: t0 + 2), "\(label)")
+        }
+    }
+
     @Test("concurrent claims never hand one job to two workers")
     func concurrentClaims() async throws {
         let store = try await QueueTestDatabase.store()

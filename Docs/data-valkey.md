@@ -1,7 +1,7 @@
 # Alula Data Valkey
 
 Valkey (and Redis) as a first-class Alula **data store**: typed access to its
-data structures, scope-bound connections, and repository-layer integration, on
+data structures, connections leased per operation, and repository-layer integration, on
 top of Alula Core and [Alula Data Core](data-core.md).
 
 This is *composition plus stereotypes*, not a from-scratch client: the driver
@@ -68,6 +68,10 @@ returns connections: a `ValkeyDataSource` started by hand in a test and
 never shut down keeps its connections for the lifetime of the process.
 Under `Alula.bootstrap` the module's service handles that.
 
+How this compares with the Postgres pool during an outage, and what the
+cache, session and rate-limit stores do when Valkey is down, is in
+[operations.md](operations.md#valkey).
+
 ## Writes that partly fail
 
 `transaction(_:)` reports per-command outcomes, and a MULTI the server
@@ -96,7 +100,7 @@ datasource:
     url: "valkey://localhost:6379"   # or redis:// — same client, same behavior
     pool-size: 10
     checkout-timeout-ms: 5000        # how long a caller queues before failing
-    reset-on-release: true           # clear session state between scopes
+    reset-on-release: true           # clear session state between borrowers
 ```
 
 The key under `datasource:` is `Name.name` from the module's generic parameter

@@ -17,8 +17,11 @@ import Valkey
 /// silently lost its token would tell the user their link is invalid when
 /// the store was down.
 public final class ValkeyOneTimeTokenStore: OneTimeTokenStore, Sendable {
+    /// Every stored key: `alula-token:` + the token's digest.
     public static let keyPrefix = "alula-token:"
 
+    /// The client, shared with the session store when built with
+    /// ``init(sharing:)``.
     public let client: ValkeyClient
 
     /// Shares the session store's client and pool — one connection budget
@@ -27,12 +30,21 @@ public final class ValkeyOneTimeTokenStore: OneTimeTokenStore, Sendable {
         self.client = sessions.client
     }
 
+    /// A store with a client of its own. Nothing runs that client: run
+    /// `client.run()` in a service, or prefer ``init(sharing:)``.
+    ///
+    /// - Parameters:
+    ///   - settings: The connection settings, as for sessions.
+    ///   - logger: Where the client logs.
+    /// - Throws: An error building the client's TLS configuration.
     public init(settings: ValkeySessionSettings, logger: Logger? = nil) throws {
         let logger = logger ?? Logger(label: "alula.tokens.valkey")
         self.client = ValkeyClient(
             settings.url.address, configuration: try settings.clientConfiguration(), logger: logger)
     }
 
+    /// Stores `record` under `key` for `ttl` (at least a millisecond),
+    /// replacing any record already there.
     public func put(_ key: String, _ record: Data, ttl: Duration) async throws {
         let milliseconds = max(
             1,
@@ -46,6 +58,9 @@ public final class ValkeyOneTimeTokenStore: OneTimeTokenStore, Sendable {
         }
     }
 
+    /// Returns the record and deletes it in one `GETDEL`: of any number of
+    /// concurrent callers, one gets it and the rest get `nil`. Throws rather
+    /// than returning `nil` when the server cannot be reached.
     public func take(_ key: String) async throws -> Data? {
         do {
             return try await client.getdel(ValkeyKey(Self.keyPrefix + key)).map { Data($0) }

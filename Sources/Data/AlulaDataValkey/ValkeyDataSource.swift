@@ -116,6 +116,16 @@ public final class ValkeyDataSource: DataSource, Sendable {
     /// the Postgres pool parks callers in exactly the same one.
     private let waiters = ConnectionWaiters()
 
+    /// A pool for `settings.url`. Dials nothing: ``start()`` does.
+    ///
+    /// - Parameters:
+    ///   - settings: Name, URL, pool size and checkout timeout.
+    ///   - resetOnRelease: Whether to reset session state between borrowers;
+    ///     see ``resetOnRelease``.
+    ///   - logger: Where the pool logs; defaults to
+    ///     `alula.data.valkey.<name>`.
+    /// - Throws: `ValkeyDataSourceURLError` for a URL that does not parse,
+    ///   or an error building its TLS configuration.
     public init(
         settings: DataSourceSettings,
         resetOnRelease: Bool = true,
@@ -189,6 +199,9 @@ public final class ValkeyDataSource: DataSource, Sendable {
     /// Closes the pool: further checkouts throw `DataSourceError.closed`,
     /// pooled connections are retired now (their lenders return and the
     /// driver closes them), in-flight ones as they come back.
+    ///
+    /// Waits up to 5 seconds for session resets in progress, but not for
+    /// borrowed connections. A closed pool never reopens.
     public func shutdown() async {
         // Close the door first, then wait for connections still being reset:
         // one of those is in neither `available` nor `checkedOut`, so retiring
@@ -396,6 +409,13 @@ public final class ValkeyDataSource: DataSource, Sendable {
 
     // MARK: - DataSource
 
+    /// Checks out a free connection now, or throws.
+    ///
+    /// Throws `DataSourceError.closed` after ``shutdown()``, `notStarted`
+    /// before ``start()``, and `poolExhausted` when nothing is free —
+    /// including when the server is down and the pool is empty; unlike the
+    /// Postgres pool, this one does not report `unreachable`. Every
+    /// connection it returns must be passed to ``release(_:)`` exactly once.
     public func checkout() throws -> ValkeyConnection {
         guard let connection = try checkoutIfAvailable() else {
             throw DataSourceError.poolExhausted(datasource: name, poolSize: poolSize)
@@ -435,6 +455,15 @@ public final class ValkeyDataSource: DataSource, Sendable {
         }
     }
 
+    /// Returns a connection from ``checkout()`` or
+    /// ``checkout(waitingUpTo:)``.
+    ///
+    /// Returns immediately; the work runs after it. A connection known to be
+    /// broken is retired and replaced. With ``resetOnRelease`` it first gets
+    /// `DISCARD`, `UNWATCH` and `SELECT <db>`, is available to nobody until
+    /// they land, and is retired and replaced if the `SELECT` fails.
+    /// Releasing a connection twice, or one this pool did not hand out,
+    /// traps.
     public func release(_ connection: ValkeyConnection) {
         enum Disposition {
             case retire(CheckedContinuation<Void, Never>?, replace: Bool)
@@ -569,8 +598,8 @@ public final class ValkeyDataSource: DataSource, Sendable {
 
     // MARK: - Introspection (tests, Actuator)
 
-    /// Connections currently checked out. "Scope close returned the
-    /// connection" is `activeCheckouts == 0` after `withScope`.
+    /// Connections currently checked out. A lease returned its connection
+    /// when this is back to what it was before the lease.
     public var activeCheckouts: Int { state.withLock { $0.checkedOut.count } }
     /// Connections sitting in the free list ready for reuse.
     public var availableConnections: Int { state.withLock { $0.available.count } }
@@ -582,6 +611,8 @@ public final class ValkeyDataSource: DataSource, Sendable {
     /// pool drain at shutdown. A rising count while running means the server
     /// is dropping connections.
     public var retiredConnections: Int { state.withLock { $0.totalRetired } }
+    /// Between ``start()`` and ``shutdown()``: checkouts are served.
     public var isRunning: Bool { state.withLock { $0.phase == .running } }
+    /// After ``shutdown()``, or a failed ``start()``. Permanent.
     public var isClosed: Bool { state.withLock { $0.phase == .closed } }
 }

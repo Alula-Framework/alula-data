@@ -106,17 +106,27 @@ public enum ValkeyChangesetTranslation {
         public let deletes: [String]
     }
 
+    /// One field to `HSET`, and the value it is set to.
     public struct FieldValue: Sendable, Equatable {
+        /// The hash field: the model column's name.
         public let field: String
+        /// The value, already reduced to something the driver can render.
         public let value: ValkeyChangesetValue
 
+        /// Pairs a field with its value.
         public init(field: String, value: ValkeyChangesetValue) {
             self.field = field
             self.value = value
         }
     }
 
-    /// Builds the write plan, or nil when there is nothing to write.
+    /// The hash write `changes` amounts to, or `nil` when nothing changed.
+    ///
+    /// The key is `key` when given, else derived from the model's primary
+    /// key as `<tableName>:<pk>…`. Pure: nothing is sent.
+    ///
+    /// - Throws: ``ValkeyChangesetError`` when no key can be derived or a
+    ///   value cannot be rendered.
     public static func plan<M: TableModel>(
         _ changes: ValidatedChanges,
         for model: M.Type,
@@ -276,6 +286,9 @@ private func flattenOptional(_ value: any Sendable) -> Any? {
     }
 }
 
+/// Why a changeset could not be written to a hash. Thrown before anything
+/// is sent, except ``commandFailed(key:commandIndex:reason:)``, which means
+/// part of the write may have landed: `MULTI` does not roll back.
 public enum ValkeyChangesetError: Error, Sendable, Equatable, CustomStringConvertible {
     /// A changed field carried a value type this driver cannot render. The
     /// supported set: String, fixed-width integers, Double/Float, Bool,

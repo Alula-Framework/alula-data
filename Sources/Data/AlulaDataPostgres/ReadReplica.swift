@@ -61,6 +61,21 @@ extension PostgresDataSource {
     ///
     /// Writes through this repo reach the replica, which a hot standby
     /// refuses. Use `withRepo` for writes.
+    ///
+    /// What it does not do:
+    ///
+    /// - **Fall back after checkout.** Only a failed checkout moves the read
+    ///   to the primary; a statement that fails on the replica throws. A read
+    ///   can wait out the replica's checkout timeout and then queue on the
+    ///   primary's.
+    /// - **Bound staleness.** Nothing measures replication lag. A read here
+    ///   may not see a write the same request just made, even when it falls
+    ///   back, because it runs on its own connection outside any transaction
+    ///   the caller has open.
+    /// - **Revive a replica that failed to start.** Its pool stays closed
+    ///   until the process restarts, and every call falls back.
+    ///
+    /// See Docs/operations.md.
     public func withReadRepo<T>(
         isolation: isolated (any Actor)? = #isolation,
         _ body: (Repo) async throws -> T

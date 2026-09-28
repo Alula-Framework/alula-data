@@ -4,6 +4,49 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-09-28
+
+Requires alula 0.59.0 and Hangar 0.14.0.
+
+### Fixed
+
+- **A queue job handed back at shutdown on its last attempt runs again.**
+  `PostgresQueueStore` implements alula 0.59.0's `QueueStore.handBack`, which
+  returns the job to `available` with its attempt given back in the same
+  `UPDATE`. Before, a job the worker handed back just before the shutdown
+  deadline kept the attempt spent, and on its last attempt it was discarded
+  when next claimed. An outbox message, being a queue job, was dropped the
+  same way.
+- **The Valkey cache no longer stays off after Valkey recovers.** Its
+  breaker admits one probe after the cool-off. A probe that ended with no
+  verdict — cancelled, or failed on the client's own connection breaker, the
+  likely answer while the server is still down — never reported back, and a
+  `set` with an already-expired TTL took the probe and returned without
+  using it. Either held the gate shut until the process restarted, with
+  `isCoolingOff` reading `false`. Such a probe now gives the gate up, and the
+  expired-TTL `set` no longer takes it.
+- The `sslmode` error message listed three accepted values; `verify-ca` and
+  `verify-full` are accepted too.
+
+### Changed
+
+- **Documentation pass** from a documentation audit:
+  - `Docs/operations.md` is an operations manual: pools and checkout,
+    transactions and connection reuse, Postgres outages and recovery,
+    replicas, PubSub loss, publish-on-commit, the queue store, migrations in
+    a deployment, and Valkey.
+  - Doc comments on about 145 declarations state guarantees, failure
+    behaviour and lifetimes. Drift fixed on the way: the URL `sslmode`
+    comments, a replica whose pool fails to start stays closed (the guide
+    implied it recovers), stale scope and `@Transactional` vocabulary, and a
+    NOTIFY payload is under 8000 bytes, and a too-large one is logged by
+    `ClusteredPubSub`, not thrown to the publisher.
+  - The README's traits table lists the Scheduler, Queue and PubSub Postgres
+    products.
+  - Snippets compile `migrate.md`'s and `data-postgres.md`'s examples.
+  - `CI/docs-report.py` and an advisory CI job list undocumented public
+    declarations, thin comments, and doc pins behind the latest release.
+
 ## [0.23.1] - 2026-09-27
 
 ### Fixed

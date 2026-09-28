@@ -9,13 +9,13 @@ import PostgresNIO
 ///
 /// - Schemes: `postgres` or `postgresql`.
 /// - Port defaults to 5432; user to `postgres`; password to none.
-/// - `sslmode`: `disable`, `prefer` (default), or `require` — the libpq
-///   subset that maps onto PostgresNIO's three TLS modes. The stricter libpq
-///   modes (`verify-ca`, `verify-full`) need a CA bundle, which does not fit
-///   in a URL; so does a unix domain socket. Both go through
+/// - `sslmode`: `disable`, `prefer` (default), `require`, `verify-ca` or
+///   `verify-full`, with libpq's meanings (see ``SSLMode``); libpq's `allow`
+///   is not accepted. The `verify-*` modes check against the system's trust
+///   roots. A private CA bundle does not fit in a URL, and neither does a
+///   unix domain socket: both go through
 ///   `PostgresDataSource(name:configuration:…)`, which takes a
-///   `PostgresConnection.Configuration` you built yourself. That initializer
-///   did not exist while this sentence recommended it.
+///   `PostgresConnection.Configuration` you built yourself.
 ///
 /// Parsing is eager and loud: a malformed URL throws when the module is built
 /// at composition, failing bootstrap before any request is served.
@@ -52,13 +52,23 @@ public struct PostgresDataSourceURL: Sendable, Equatable {
         case verifyFull = "verify-full"
     }
 
+    /// The server's host name or address.
     public let host: String
+    /// The server's port; 5432 when the URL names none.
     public let port: Int
+    /// The role to log in as; `postgres` when the URL names none.
     public let username: String
+    /// The password, already percent-decoded; `nil` when the URL has none.
+    /// This type has no custom description, so interpolating a whole
+    /// `PostgresDataSourceURL` into a log line prints it.
     public let password: String?
+    /// The database, from the URL's path.
     public let database: String
+    /// How TLS is negotiated and verified.
     public let sslMode: SSLMode
 
+    /// A URL built from its parts, without parsing. The defaults are the
+    /// ones ``parse(_:datasource:)`` applies to a URL that omits them.
     public init(
         host: String,
         port: Int = 5432,
@@ -75,6 +85,16 @@ public struct PostgresDataSourceURL: Sendable, Equatable {
         self.sslMode = sslMode
     }
 
+    /// Parses `datasource.<name>.url`.
+    ///
+    /// Strict on purpose: an unknown query parameter is an error rather than
+    /// ignored, so a misspelled `sslmode` cannot quietly fall back to the
+    /// default.
+    ///
+    /// - Parameters:
+    ///   - string: The URL, `postgres://` or `postgresql://`.
+    ///   - name: The datasource's name, used only in error messages.
+    /// - Throws: `PostgresDataSourceURLError` naming the configuration key.
     public static func parse(_ string: String, datasource name: String) throws -> PostgresDataSourceURL {
         guard let components = URLComponents(string: string) else {
             throw PostgresDataSourceURLError.unparseable(datasource: name)
@@ -213,7 +233,7 @@ public enum PostgresDataSourceURLError: Error, Sendable, Equatable, CustomString
         case .missingDatabase(let name):
             return "Configuration key '\(key(name))' has no database path segment (postgres://host:5432/<database>)."
         case .invalidSSLMode(let name, let value):
-            return "Configuration key '\(key(name))' has sslmode '\(value)'; expected disable, prefer, or require."
+            return "Configuration key '\(key(name))' has sslmode '\(value)'; expected disable, prefer, require, verify-ca, or verify-full."
         case .unsupportedParameter(let name, let parameter):
             return "Configuration key '\(key(name))' has unsupported query parameter '\(parameter)'; only 'sslmode' is recognized."
         }

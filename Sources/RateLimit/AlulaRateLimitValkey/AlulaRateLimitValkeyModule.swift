@@ -44,6 +44,7 @@ public struct AlulaRateLimitValkeyModule: AlulaModule {
     /// The same value concretely, for the client-pool service.
     private let valkey: ValkeyRateLimitStore
 
+    /// Reads `rate-limit.valkey.*` and builds the store. Dials nothing.
     public init(configuration: Configuration) throws {
         let valkey = try ValkeyRateLimitStore(
             settings: try ValkeyRateLimitSettings.load(from: configuration))
@@ -51,6 +52,8 @@ public struct AlulaRateLimitValkeyModule: AlulaModule {
         self.store = valkey
     }
 
+    /// Traps. Build the module with ``init(configuration:)``, which
+    /// `alulaComposeModules` does.
     public init() {
         preconditionFailure(
             "AlulaRateLimitValkeyModule takes its configuration in init(configuration:), so it "
@@ -59,10 +62,16 @@ public struct AlulaRateLimitValkeyModule: AlulaModule {
                 + "yourself and use the entry point taking module instances.")
     }
 
+    /// Runs the store's client pool for the application's lifetime.
+    ///
+    /// The module contributes no readiness check: with alula's default
+    /// policy a limiter outage is served, not refused.
     public var service: (any Service)? {
         ValkeyRateLimitClientService(store: valkey)
     }
 
+    /// Infrastructure: started before, and stopped after, the transport
+    /// whose requests it limits.
     public var serviceShutdownPhase: ServiceShutdownPhase { .infrastructure }
 }
 

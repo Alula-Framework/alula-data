@@ -63,6 +63,8 @@ public final class ValkeyDataModule<Name: DataSourceName>: AlulaModule {
         self.healthChecks = [liveness.healthCheck]
     }
 
+    /// Traps. The module needs its configuration; build it with
+    /// ``init(configuration:)``, which `alulaComposeModules` does.
     public init() {
         preconditionFailure(
             "ValkeyDataModule takes its configuration in init(configuration:), so it cannot be "
@@ -75,6 +77,10 @@ public final class ValkeyDataModule<Name: DataSourceName>: AlulaModule {
     // through `pool.withConnection { }` and returned when that operation ends.
     // The module holds only the pool (and its liveness probe).
 
+    /// The pool's service: dial every connection, maintain the pool while
+    /// running, drain it on graceful shutdown. A server that refuses the
+    /// connection fails the start here, from inside the running service
+    /// group, as `ALD-DATA-1001`.
     public var service: (any Service)? {
         ValkeyPoolService(dataSource: dataSource)
     }

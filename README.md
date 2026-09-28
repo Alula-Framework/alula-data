@@ -19,18 +19,18 @@ dependencies no enabled trait reaches — so the drivers sit behind traits.
 | Configuration | Products | Resolves |
 | --- | --- | --- |
 | (none) | `AlulaCache`, `AlulaCacheTesting`, `AlulaDataCore`, `AlulaDataTesting`, `AlulaMigrateCore` | 10 packages, no driver |
-| `traits: ["Postgres"]` | + `AlulaDataPostgres`, `AlulaMigrate`, `AlulaMigrateCLI` | + PostgresNIO, Hangar, ArgumentParser |
+| `traits: ["Postgres"]` | + `AlulaDataPostgres`, `AlulaSchedulerPostgres`, `AlulaQueuePostgres`, `AlulaPubSubPostgres`, `AlulaMigrate`, `AlulaMigrateCLI` | + PostgresNIO, Hangar, ArgumentParser |
 | `traits: ["Valkey"]` | + `AlulaCacheValkey`, `AlulaDataValkey`, `AlulaPubSubValkey`, `AlulaSessionsValkey`, `AlulaRateLimitValkey` | + valkey-swift, NIOSSL |
 
 Both are opt-in — name a driver to get it:
 
 ```swift
 // In-memory cache and the data protocols. No driver resolved at all.
-.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.23.0")
+.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.24.0")
 
 // With PostgreSQL.
 .package(url: "https://github.com/Alula-Framework/alula-data.git",
-         from: "0.23.0", traits: ["Postgres"])
+         from: "0.24.0", traits: ["Postgres"])
 ```
 
 **Swift 6.3 or later is required**: through 6.2.x, SwiftPM did not resolve a
@@ -59,7 +59,11 @@ you need.
 | `AlulaDataValkey` | Valkey data source. |
 | `*Testing` | Conformance suites and fakes — including `DataSourceConformance`, the contract every data source must satisfy. |
 
-Per-product documentation lives in [Docs/](Docs/). How to test an application
+Per-product documentation lives in [Docs/](Docs/).
+[Docs/operations.md](Docs/operations.md) is the page for running it in
+production: pool behaviour under load and during an outage, what a
+transaction guarantees about its connection, what PubSub and the job queue
+can lose, and migrations in a deploy. How to test an application
 built on Alula — including the cache and data-source fakes this package
 ships — is covered in
 [alula's testing guide](https://github.com/Alula-Framework/alula/blob/main/Docs/testing.md).

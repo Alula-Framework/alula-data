@@ -43,5 +43,6 @@ public protocol DataSourceName {
 /// The conventional default datasource (`primary`). Apps with one
 /// database never need to define their own `DataSourceName`.
 public enum PrimaryDataSource: DataSourceName {
+    /// `primary`: the datasource under `datasource.primary`.
     public static let name = "primary"
 }

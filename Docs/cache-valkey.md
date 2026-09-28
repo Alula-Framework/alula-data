@@ -145,7 +145,10 @@ The suites `FLUSHDB` between tests — point them at throwaway servers only.
 - **CV3 — the adapter breaker is half-open, not just cool-off.** After the
   cool-off elapses, exactly one probe is admitted; success re-closes the
   breaker, failure re-arms the full cool-off immediately rather than
-  letting a burst through at reopen.
+  letting a burst through at reopen. A probe that ends in a failure the
+  breaker does not count (CV2's list) gives up the probe instead: the next
+  caller probes. Before 0.24.0 it reported neither, and the breaker stayed
+  shut until the process restarted.
 
 ## What the breaker is for
 

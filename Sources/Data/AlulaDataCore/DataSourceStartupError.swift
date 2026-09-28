@@ -17,7 +17,9 @@ public struct DataSourceStartupError: Error, StartupDiagnostic, CustomStringConv
     public let datasource: String
     /// `postgres` or `valkey`.
     public let backend: String
+    /// Where the pool was dialling: a host name, or a unix socket path.
     public let host: String
+    /// The port dialled, or 5432 when a Postgres configuration named none.
     public let port: Int
     /// The database name, or a Valkey database number.
     public let database: String
@@ -26,6 +28,8 @@ public struct DataSourceStartupError: Error, StartupDiagnostic, CustomStringConv
     /// The driver's error, for code that wants it deliberately.
     public let underlying: any Error
 
+    /// Drivers build this; an application only reads it. Put nothing in
+    /// `cause` that you would not print: it is shown at startup as it is.
     public init(
         datasource: String, backend: String, host: String, port: Int, database: String, cause: String,
         underlying: any Error

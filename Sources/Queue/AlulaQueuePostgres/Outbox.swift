@@ -33,9 +33,12 @@ import Hangar
 ///   guarantee ends there: it is durable *invocation* of the bus after the
 ///   commit, not durable delivery to subscribers.
 /// - **At least once into the bus.** A worker that dies after publishing
-///   and before recording it leaves the job to be claimed again, so a
-///   subscriber can see a message twice. Each message carries a unique
-///   `outbox-id` in its metadata for subscribers that must not act twice.
+///   and before recording it leaves the job to be claimed again once its
+///   lease expires, so a subscriber can see a message twice. Each message
+///   carries a unique `outbox-id` in its metadata for subscribers that must
+///   not act twice. The repeats are bounded by the job's attempt limit (the
+///   queue's default, ten): a job claimed back after its last attempt is
+///   discarded unpublished.
 /// - **Not in order.** Workers run jobs concurrently, so two messages
 ///   written in sequence can be published in either order.
 /// - **The bus is still the bus.** Once published, delivery is the
@@ -48,16 +51,24 @@ import Hangar
 ///   bus itself.
 ///
 /// Needs the Postgres job store, `AlulaQueuePostgresModule`, and a queue
-/// worker to be running somewhere. List ``AlulaOutboxModule``.
+/// worker serving the `outbox` queue to be running somewhere — until one
+/// does, committed messages wait in the table. List ``AlulaOutboxModule``.
+/// See Docs/operations.md.
 public struct Outbox: Sendable {
     /// The job an outbox message travels as.
     public struct Envelope: QueuedJob, Equatable {
+        /// `alula.outbox`: the job kind the outbox handler is registered for.
         public static var kind: String { "alula.outbox" }
+        /// `outbox`: the queue the messages run on.
         public static var queue: String { "outbox" }
 
+        /// The message's `outbox-id`, also in ``metadata``.
         public var id: UUID
+        /// The PubSub topic to publish to.
         public var topic: String
+        /// The message body, as given to ``Outbox/publish(_:in:)``.
         public var payload: Data
+        /// The message's metadata, including `outbox-id`.
         public var metadata: [String: String]
     }
 
@@ -81,6 +92,14 @@ public struct Outbox: Sendable {
     }
 
     /// Writes `message` into the transaction `repo` belongs to.
+    ///
+    /// Nothing is published here. The message is a job row written through
+    /// `repo`, so it is published only if that transaction commits, and only
+    /// once a worker claims it. Pass the transaction's `tx`: a repo outside
+    /// the transaction writes a message that survives its rollback.
+    ///
+    /// - Returns: The message's `outbox-id`, which subscribers see in its
+    ///   metadata.
     @discardableResult
     public func publish(_ message: Message, in repo: Repo) async throws -> UUID {
         let id = UUID()
@@ -101,6 +120,10 @@ public struct Outbox: Sendable {
     }
 
     /// What the queue worker runs for each committed message.
+    ///
+    /// Calls `PubSub.publish`, which does not throw, so the job always
+    /// completes: a broadcast the bus fails to send is logged by the bus and
+    /// not retried.
     public var handler: QueueHandler {
         let bus = bus
         return .handle(Envelope.self) { envelope, _ in
@@ -129,20 +152,30 @@ public struct Outbox: Sendable {
 /// Its messages run on the `outbox` queue, which a worker serves once a
 /// handler for it is registered, as this module's is.
 public struct AlulaOutboxModule: AlulaModule {
+    /// The Postgres job store, the job queue, and PubSub.
     public static var dependencies: [any AlulaModule.Type] {
         [AlulaQueuePostgresModule.self, AlulaQueueModule.self, AlulaPubSubModule.self]
     }
 
+    /// The outbox a component injects to publish on commit.
     public let outbox: Outbox
     /// The publishing handler, for the queue worker.
     public let queueHandlers: [QueueHandler]
 
+    /// Called by the composition root with the modules' values.
+    ///
+    /// - Parameters:
+    ///   - jobQueue: The application's job queue.
+    ///   - postgresQueueStore: The store `AlulaQueuePostgresModule` provides.
+    ///   - bus: The application's PubSub.
     public init(jobQueue: JobQueue, postgresQueueStore: PostgresQueueStore, bus: any PubSub) {
         let outbox = Outbox(queue: jobQueue, store: postgresQueueStore, bus: bus)
         self.outbox = outbox
         self.queueHandlers = [outbox.handler]
     }
 
+    /// Traps. Build the module with ``init(jobQueue:postgresQueueStore:bus:)``,
+    /// which `alulaComposeModules` does.
     public init() {
         preconditionFailure(
             "AlulaOutboxModule takes the job queue, the Postgres job store and the bus in "

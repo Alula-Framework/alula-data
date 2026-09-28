@@ -86,8 +86,8 @@ public protocol DataSource: Sendable {
 
     /// Return a previously checked-out connection to the pool.
     ///
-    /// Non-throwing: release runs on cleanup paths (scope close, the error
-    /// leg of `withConnection`) where a thrown error would mask the original.
+    /// Non-throwing: release runs on cleanup paths (the error leg of
+    /// `withConnection`) where a thrown error would mask the original.
     /// Implementations log a failure, or trap on one that indicates a bug in
     /// the caller rather than in the store — every pool here traps on a double
     /// release or a foreign connection, because continuing past either means
@@ -100,6 +100,12 @@ public protocol DataSource: Sendable {
     /// A default implementation is provided in terms of
     /// `checkout(waitingUpTo:)`/`release` — so it queues rather than failing
     /// the moment the pool is busy.
+    ///
+    /// The connection is valid only inside `body`: keeping it past the
+    /// closure hands it to the next borrower while you still hold it. A
+    /// `withConnection` nested inside another leases a *second* connection,
+    /// so code that nests on a small pool can wait out its own checkout
+    /// timeout. See Docs/operations.md.
     ///
     /// `isolation` defaults to the caller's actor, so `body` runs *on* that
     /// actor rather than being sent to a nonisolated context. Without it,

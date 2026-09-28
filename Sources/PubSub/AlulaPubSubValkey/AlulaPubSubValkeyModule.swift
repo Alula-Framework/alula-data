@@ -101,8 +101,12 @@ public struct AlulaPubSubValkeyModule: AlulaModule {
 /// Holds the client so the module can register it once and the service can
 /// run it, without constructing two clients that each dial Valkey.
 public final class ValkeyPubSubClient: Sendable {
+    /// The client both publishing and subscribing use. Its `run()` is the
+    /// module's service, and must be running before the client is used.
     public let client: ValkeyClient
+    /// `pubsub.valkey.channel`: the channel every node shares.
     public let channel: String
+    /// `pubsub.valkey.retry-delay-ms`: the first delay before resubscribing.
     public let retryDelay: Duration
 
     init(settings: ValkeyPubSubSettings) throws {

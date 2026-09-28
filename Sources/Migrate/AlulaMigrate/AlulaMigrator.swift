@@ -39,6 +39,7 @@ public struct AlulaMigrator: Sendable {
     /// it to ``defaultMigrationsTable`` and read-only calls read it where it is (D45).
     public static let legacyMigrationsTable = "flight_migrations"
 
+    /// How a migrator finds its ledger, takes its lock, and reports.
     public struct Configuration: Sendable {
         /// Bookkeeping table name; may be schema-qualified (`"ops.alula_migrations"`).
         public var migrationsTable: String
@@ -64,11 +65,20 @@ public struct AlulaMigrator: Sendable {
         /// deleted migration files.
         public var failOnUnknownApplied: Bool
 
+        /// Where progress, warnings and SQL (at debug) are logged.
         public var logger: Logger
 
         /// Progress callback for CLI output or metrics; invoked synchronously.
         public var onEvent: (@Sendable (MigrationEvent) -> Void)?
 
+        /// - Parameters:
+        ///   - migrationsTable: See ``migrationsTable``.
+        ///   - advisoryLockKey: See ``advisoryLockKey``. Every migrator that
+        ///     must not run at the same time as this one needs the same key.
+        ///   - lockTimeout: See ``lockTimeout``; 30 seconds by default.
+        ///   - failOnUnknownApplied: See ``failOnUnknownApplied``.
+        ///   - logger: See ``logger``.
+        ///   - onEvent: See ``onEvent``.
         public init(
             migrationsTable: String = AlulaMigrator.defaultMigrationsTable,
             advisoryLockKey: Int64 = AlulaMigrator.defaultAdvisoryLockKey,
@@ -119,6 +129,21 @@ public struct AlulaMigrator: Sendable {
 
     /// Applies all pending migrations in version order. Returns the migrations applied
     /// (empty if the database was already up to date).
+    ///
+    /// Holds the advisory lock on one connection for the whole run, waiting up to
+    /// ``Configuration/lockTimeout`` for it; a second migrator against the same database
+    /// waits, then finds nothing pending. Before applying anything it creates the ledger
+    /// if absent and verifies every applied migration's checksum.
+    ///
+    /// Each migration commits on its own, so a failure keeps the ones before it: the
+    /// failing one is rolled back with its ledger row, and the rest are not attempted.
+    /// A migration with `wrapInTransaction = false` is the exception — a statement that
+    /// fails leaves the earlier ones in place and the version unrecorded.
+    ///
+    /// - Throws: ``MigrationError`` — `lockTimeout`, `checksumMismatch`,
+    ///   `unknownAppliedMigrations` (only with ``Configuration/failOnUnknownApplied``),
+    ///   or `migrationFailed`, naming the version, the statement, and whether it was
+    ///   rolled back.
     @discardableResult
     public func migrate() async throws -> [AppliedMigration] {
         let entries = try validatedEntries()
@@ -209,6 +234,10 @@ public struct AlulaMigrator: Sendable {
     // MARK: - Status
 
     /// Applied + pending, with checksum states. Read-only: takes no lock, creates nothing.
+    ///
+    /// Because it takes no lock, it can run beside a migration and report a moment in
+    /// the middle of it. A drifted checksum is reported here rather than thrown. With no
+    /// ledger, everything is pending; with only the pre-rename ledger, that one is read.
     public func status() async throws -> MigrationStatus {
         let entries = try validatedEntries()
         let byVersion = Dictionary(uniqueKeysWithValues: entries.map { ($0.version, $0) })

@@ -102,7 +102,8 @@ thing reported (`ALD-DATA-1001`, see [Diagnostics](../Diagnostics/ALD-DATA-1001.
 not the last line after the listener has announced itself. The pool's `run()`
 then replaces broken connections while running and drains on graceful
 shutdown. A read replica still dials with the service: it failing does not
-stop the application.
+stop the application, and it is not redialled either — reads use the primary
+until the process restarts.
 
 ### What a client sees when the database fails
 
@@ -160,6 +161,10 @@ emitted a literal `COMMIT` that ended the enclosing transaction, and writes
 the caller intended to roll back became durable with no error anywhere.
 Constructing the repo per operation removes the thing that went stale.
 
+What keeps a connection from reaching the next borrower mid-transaction, and
+what is left uncovered, is in
+[operations.md](operations.md#transactions-and-the-connection).
+
 ### Read replicas
 
 ```yaml
@@ -188,13 +193,19 @@ code says otherwise. `withReadRepo` without a replica configured is
 
 When the replica cannot give a connection (down, or its pool exhausted), the
 read goes to the primary and a warning is logged once. Recovery is logged
-once too. Set `fallback: false` to fail instead. The replica's pool runs
+once too — for a replica whose pool started. One that failed to start stays
+closed until the process restarts, and every `withReadRepo` falls back. Only
+the checkout falls back: a statement that fails on the replica throws. Set
+`fallback: false` to fail instead. The replica's pool runs
 beside the primary's and never takes it down. A replica is not part of
 readiness, because with fallback the service is still whole without it.
 
 The read repo is handed to your closure, not bound as the ambient
 `Repo.current`. Binding it would send any code reaching for the ambient repo,
 writes included, to a server that refuses them.
+
+Staleness, read-your-writes and forcing the primary are in
+[operations.md](operations.md#read-replicas).
 
 ### Changesets
 

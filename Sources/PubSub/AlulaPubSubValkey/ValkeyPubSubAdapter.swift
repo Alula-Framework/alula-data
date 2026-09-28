@@ -87,6 +87,9 @@ public struct ValkeyPubSubAdapter: DistributedPubSubAdapter {
         self.logger = logger
     }
 
+    /// `PUBLISH`es `message` to every node subscribed now, this one
+    /// included. Throws what the client throws: when the server is
+    /// unreachable or slow this fails rather than holding the message.
     public func broadcast(_ message: Message) async throws {
         _ = try await client.publish(channel: channel, message: WireMessage.encode(message))
     }
@@ -105,6 +108,15 @@ public struct ValkeyPubSubAdapter: DistributedPubSubAdapter {
     /// and a longer wait only lengthens the gap in delivery.
     private static let maximumRetryDelay = Duration.seconds(30)
 
+    /// Starts a subscribe loop and returns its messages.
+    ///
+    /// Each call starts its own loop on its own subscription; the relay calls
+    /// it once. The loop resubscribes with jittered backoff (from
+    /// `retryDelay`, doubling to 30 seconds) whenever the subscription drops,
+    /// and the stream stays open across that — messages published meanwhile
+    /// are missed. It buffers 1,024 messages; past that the oldest are
+    /// dropped and counted in `alula.pubsub.dropped`. An undecodable message
+    /// is logged and skipped. The stream finishes only when cancelled.
     public func incoming() -> AsyncStream<Message> {
         let client = self.client
         let channel = self.channel

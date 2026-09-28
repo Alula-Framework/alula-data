@@ -58,6 +58,16 @@ extension DataSource where Connection == PostgresConnection {
     /// binding's extent is exactly this bracket — visible in the code that
     /// opens it, unlike the old arrangement, where a unit of work bound the
     /// ambient repo for its whole duration from inside the framework.
+    ///
+    /// The connection is leased from this pool, never its replica, queueing
+    /// up to the pool's checkout timeout, and returned when `body` ends,
+    /// thrown or not. Do not
+    /// keep the `Repo` past the closure: it is bound to a connection that
+    /// the next borrower will be using. A `withRepo` nested inside another
+    /// leases a second connection; pass the outer `repo` or `tx` down
+    /// instead. On `PostgresDataSource`, the repo reports its transactions to
+    /// the pool, so a connection returned with a transaction still open is
+    /// rolled back before reuse. See Docs/operations.md.
     public func withRepo<T>(
         isolation: isolated (any Actor)? = #isolation,
         _ body: (Repo) async throws -> T

@@ -61,8 +61,9 @@ public struct PostgresJobCoordinator: JobCoordinator {
     /// - Parameters:
     ///   - dataSource: The pool to claim through. Usually the application's
     ///     primary — the leases are small and infrequent.
-    ///   - table: Where leases live. Overridable for a deployment that
-    ///     partitions by schema.
+    ///   - table: Where leases live. Quoted as one identifier, so a dotted
+    ///     name such as `ops.leases` is a table of that name, not `leases` in
+    ///     schema `ops`.
     ///   - owner: Recorded on the winning row so an operator can see *which*
     ///     server ran a job. Defaults to the host name — note that resolving
     ///     it can block, so a caller constructing coordinators on a latency
@@ -80,8 +81,17 @@ public struct PostgresJobCoordinator: JobCoordinator {
         self.logger = logger
     }
 
+    /// How the scheduler names this coordinator in its logs.
     public var describedKind: String { "postgres lease (\(table))" }
 
+    /// Whether this process won the firing of `job` scheduled for
+    /// `scheduledFor`.
+    ///
+    /// One `INSERT … ON CONFLICT DO NOTHING` on the lease row: of every
+    /// process that asks about the same firing, exactly one gets `true`, even
+    /// across restarts, for as long as the row is kept. A throw means this
+    /// process does not know: if the insert landed and its answer was lost,
+    /// the firing is claimed although this process was never told so.
     public func claim(job: String, scheduledFor: Date) async throws -> Bool {
         try await dataSource.withConnection { connection in
             // ON CONFLICT DO NOTHING makes the race resolve in the database

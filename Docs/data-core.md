@@ -213,6 +213,10 @@ queueing turns that into latency rather than errors, which is better but not
 free. Watch `waitingCallers.peak`: a pool that is too small says so there
 before it says so as timeouts.
 
+What the queue does not promise (strict arrival order), what a nested lease
+costs, and how release, replacement and shutdown behave are in
+[operations.md](operations.md#connection-pools).
+
 ## Testing a driver
 
 ``DataSourceConformance`` is the contract as an executable suite. A driver

@@ -17,6 +17,9 @@ public struct MigrationEntry: Sendable {
     /// The migration type; instantiated when the migration runs.
     public let type: any Migration.Type
 
+    /// An entry with a checksum already computed — what the generated
+    /// registry calls. A checksum that differs from the one recorded when
+    /// the migration was applied stops every run until `repair()`.
     public init(version: Int64, name: String, checksum: String, type: any Migration.Type) {
         self.version = version
         self.name = name

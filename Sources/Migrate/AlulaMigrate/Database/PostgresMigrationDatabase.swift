@@ -13,11 +13,19 @@ public struct PostgresMigrationDatabase: MigrationDatabase {
     let client: PostgresClient
     let logger: Logger
 
+    /// A database over `client`, whose `run()` must be running while it is
+    /// used.
+    ///
+    /// - Parameters:
+    ///   - client: The pool sessions are leased from.
+    ///   - logger: Where executed SQL is logged, at debug.
     public init(client: PostgresClient, logger: Logger) {
         self.client = client
         self.logger = logger
     }
 
+    /// Leases one connection from the client for the duration of `body`.
+    /// The session is valid only inside it.
     public func withSession<T: Sendable>(
         _ body: @Sendable (any MigrationSession) async throws -> T
     ) async throws -> T {

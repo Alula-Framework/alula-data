@@ -28,7 +28,7 @@ import Synchronization
 /// channel (`pubsub.postgres.channel`, default `alula_pubsub`), and every
 /// node receives every message.
 ///
-/// **A NOTIFY payload is at most 8000 bytes**, a limit in Postgres itself.
+/// **A NOTIFY payload must be under 8000 bytes**, a limit in Postgres itself.
 /// A message whose encoding is larger is refused when it is broadcast, with
 /// the size in the error. `ClusteredPubSub` logs it and still delivers the
 /// message on this node. Channels' presence diffs and chat messages fit with
@@ -38,7 +38,10 @@ import Synchronization
 /// Broadcasts go through the pool (`SELECT pg_notify`). Listening holds one
 /// dedicated connection, outside the pool, and reconnects on its own after
 /// `pubsub.postgres.retry-delay-ms` (default 1000) when that connection is
-/// lost.
+/// lost — every time, with no backoff. Messages sent while it is
+/// reconnecting are missed. Received messages wait in a buffer of 10,000;
+/// past that the oldest are dropped and counted in `alula.pubsub.dropped`.
+/// The module contributes no readiness check. See Docs/operations.md.
 public final class PostgresPubSubAdapter: DistributedPubSubAdapter {
     /// Postgres's own limit on a NOTIFY payload.
     public static let maxPayloadBytes = 7999
@@ -50,6 +53,15 @@ public final class PostgresPubSubAdapter: DistributedPubSubAdapter {
     private let stream: AsyncStream<Message>
     private let continuation: AsyncStream<Message>.Continuation
 
+    /// An adapter over `dataSource`. Listens only once the module's service
+    /// runs it.
+    ///
+    /// - Parameters:
+    ///   - dataSource: The pool broadcasts borrow from, and the settings the
+    ///     listener's own connection is dialled with.
+    ///   - channel: The `NOTIFY` channel every node shares.
+    ///   - retryDelay: How long the listener waits between reconnects.
+    ///   - logger: Where losses, recoveries and drops are reported.
     public init(
         dataSource: PostgresDataSource, channel: String = "alula_pubsub",
         retryDelay: Duration = .seconds(1),
@@ -68,6 +80,15 @@ public final class PostgresPubSubAdapter: DistributedPubSubAdapter {
         let m: [String: String]?
     }
 
+    /// Sends `message` to every node listening now, this one included.
+    ///
+    /// Borrows a pooled connection, so it queues and fails with the pool.
+    /// It runs outside any transaction the caller has open: it is sent
+    /// whether or not that transaction commits.
+    ///
+    /// - Throws: ``PostgresPubSubError/payloadTooLarge(topic:bytes:)`` when
+    ///   the encoded message is over 7999 bytes, before anything is sent; a
+    ///   pool or database error otherwise.
     public func broadcast(_ message: Message) async throws {
         let wire = Wire(
             t: message.topic, p: message.payload.base64EncodedString(),
@@ -84,6 +105,9 @@ public final class PostgresPubSubAdapter: DistributedPubSubAdapter {
         }
     }
 
+    /// Messages from every node, this one's included. One stream per
+    /// adapter, shared by every call; it finishes only when the listener
+    /// stops at shutdown.
     public func incoming() -> AsyncStream<Message> { stream }
 
     /// Listens until cancelled, reconnecting after `retryDelay` whenever the
@@ -134,7 +158,11 @@ public final class PostgresPubSubAdapter: DistributedPubSubAdapter {
     }
 }
 
+/// Why a broadcast was refused before reaching Postgres.
 public enum PostgresPubSubError: Error, Sendable, Equatable, CustomStringConvertible {
+    /// The encoded message is over ``PostgresPubSubAdapter/maxPayloadBytes``.
+    /// The JSON wrapping and base64 body leave room for about 5.9 KB of raw
+    /// payload.
     case payloadTooLarge(topic: String, bytes: Int)
 
     public var description: String {
@@ -158,9 +186,17 @@ public enum PostgresPubSubError: Error, Sendable, Equatable, CustomStringConvert
 ///     retry-delay-ms: 1000     # default
 /// ```
 public struct AlulaPubSubPostgresModule: AlulaModule {
+    /// What the composition root hands to `AlulaPubSubModule`.
     public let adapter: any DistributedPubSubAdapter
     private let postgres: PostgresPubSubAdapter
 
+    /// Reads `pubsub.postgres.*`. Dials nothing: the service does.
+    ///
+    /// - Parameters:
+    ///   - configuration: The application's configuration.
+    ///   - dataSource: The pool broadcasts borrow from.
+    /// - Throws: ``PostgresPubSubConfigurationError`` for a channel that is
+    ///   not 1–63 letters, digits or underscores.
     public init(configuration: Configuration, dataSource: PostgresDataSource) throws {
         let channel =
             try configuration.getIfPresent(allowingSnakeCase: "pubsub.postgres.channel", as: String.self) ?? "alula_pubsub"
@@ -177,6 +213,8 @@ public struct AlulaPubSubPostgresModule: AlulaModule {
         self.adapter = adapter
     }
 
+    /// Traps. Build the module with ``init(configuration:dataSource:)``,
+    /// which `alulaComposeModules` does.
     public init() {
         preconditionFailure(
             "AlulaPubSubPostgresModule takes its configuration and pool in "
@@ -184,7 +222,10 @@ public struct AlulaPubSubPostgresModule: AlulaModule {
                 + "Pass `composedBy: alulaComposeModules` to Alula.run.")
     }
 
+    /// The listener: holds one dedicated connection for the process's life
+    /// and reconnects when it drops.
     public var service: (any Service)? { PostgresPubSubListener(adapter: postgres) }
+    /// Infrastructure: started before, and stopped after, what publishes.
     public var serviceShutdownPhase: ServiceShutdownPhase { .infrastructure }
 }
 
@@ -198,7 +239,9 @@ struct PostgresPubSubListener: Service {
     }
 }
 
+/// `pubsub.postgres.*` holds a value the module cannot use.
 public struct PostgresPubSubConfigurationError: Error, Sendable, CustomStringConvertible {
+    /// Which key, and what is wrong with it.
     public let description: String
     init(_ description: String) { self.description = description }
 }

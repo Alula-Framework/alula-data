@@ -22,14 +22,16 @@ pubsub:
 | | Postgres | Valkey |
 |---|---|---|
 | Extra infrastructure | none | a Valkey server |
-| Message size | **≤ 8000 bytes** encoded | effectively unlimited |
+| Message size | **under 8000 bytes** encoded | effectively unlimited |
 | Throughput | fine for chat, presence and invalidation traffic | built for high fan-out |
 | Delivery | at most once, every node receives everything | same |
 
 Take Postgres until the size limit or the volume says otherwise. The payload
 is JSON with the body base64-encoded, so the usable size is about 5.9 KB of
-raw payload. A larger broadcast throws `payloadTooLarge` naming the topic and
-the size, and the message is still delivered to this node's subscribers.
+raw payload. A larger broadcast is refused with `payloadTooLarge`, naming the
+topic and the size. `ClusteredPubSub` logs that error rather than throwing
+it, so `publish` returns normally: the message reaches this node's
+subscribers and no other node's.
 For large payloads, write a row and notify its id.
 
 ## How it runs
@@ -60,6 +62,9 @@ The message is written as a job in the same transaction and published by
 the queue worker after the commit. List `AlulaOutboxModule` (with
 `AlulaQueuePostgresModule` and `AlulaQueueWorkerModule`) and inject
 `Outbox`. The outbox guarantees the bus is *invoked* after the commit, at
-least once; it does not make the bus durable — delivery to subscribers stays
-at most once. Each message carries an
-`outbox-id` in its metadata, for subscribers that must not act twice.
+least once, as long as a worker serves the `outbox` queue; it does not make
+the bus durable — delivery to subscribers stays at most once, and a
+broadcast the bus fails to send is not retried. Each message carries an
+`outbox-id` in its metadata, for subscribers that must not act twice. The
+full guarantee, point by point, is in
+[operations.md](operations.md#publishing-on-commit).

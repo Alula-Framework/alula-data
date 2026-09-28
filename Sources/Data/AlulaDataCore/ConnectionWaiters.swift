@@ -36,6 +36,7 @@ public final class ConnectionWaiters: Sendable {
 
     private let state = Mutex(State())
 
+    /// An empty set of waiters. A pool holds one for its lifetime.
     public init() {}
 
     /// How many callers are parked right now, and the most there have ever
@@ -46,6 +47,12 @@ public final class ConnectionWaiters: Sendable {
     }
 
     /// The queueing checkout, expressed once for every pool.
+    ///
+    /// Not strictly first-come, first-served: `attempt` runs before a caller
+    /// parks, so a caller arriving just as a connection is released can take
+    /// it ahead of the waiter that release woke, and that waiter parks again
+    /// at the back. Cancellation is checked before every park and ends the
+    /// wait with `CancellationError`.
     ///
     /// - Parameters:
     ///   - timeout: How long to queue before giving up.

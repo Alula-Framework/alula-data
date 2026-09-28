@@ -98,6 +98,16 @@ public struct DataSourceSettings: Sendable, Equatable {
     /// `poolExhausted`. `.zero` restores the old fail-immediately behaviour.
     public let checkoutTimeout: Duration
 
+    /// Settings for one datasource, validated here rather than at first use.
+    ///
+    /// - Parameters:
+    ///   - name: The datasource's name, as in `datasource.<name>`.
+    ///   - url: The store URL. Parsed by the driver, not here.
+    ///   - poolSize: Connections the pool dials at start and never exceeds.
+    ///   - checkoutTimeout: How long an async caller queues for a
+    ///     connection; `.zero` means not at all.
+    /// - Throws: `DataSourceConfigurationError` for a blank URL, a pool size
+    ///   below 1, or a negative timeout.
     public init(
         name: String,
         url: String,

@@ -50,6 +50,10 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
     /// it a dead store reported healthy.
     public let healthChecks: [HealthCheck]
 
+    /// Reads `datasource.<name>.*` and builds the pool, and the replica's
+    /// pool when `replica.url` is set. Dials nothing: the before-start hook
+    /// does.
+    ///
     /// A bad URL or pool size fails composition — earlier than the `freeze()`
     /// factory this used to be, and much earlier than the first query.
     public init(configuration: Configuration) throws {
@@ -87,6 +91,8 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
         self.healthChecks = [liveness.healthCheck]
     }
 
+    /// Traps. The module needs its configuration; build it with
+    /// ``init(configuration:)``, which `alulaComposeModules` does.
     public init() {
         preconditionFailure(
             "PostgresDataModule takes its configuration in init(configuration:), so it cannot be "
@@ -100,11 +106,16 @@ public struct PostgresDataModule<Name: DataSourceName>: AlulaModule {
     // operation ends. The module holds only the pool (and its liveness probe);
     // a consumer takes the pool by type from the composition graph.
 
+    /// The pool's service: maintain it while running, drain it on graceful
+    /// shutdown.
+    ///
+    /// The read replica's pool runs beside the primary's and shuts down with
+    /// it. A replica that fails to start is logged and left closed until the
+    /// process restarts — reads fall back to the primary — rather than
+    /// taking the primary down with it.
     public var service: (any Service)? {
         PostgresPoolService(dataSource: dataSource)
     }
-
-    /// The replica's pool runs beside the primary's and shuts down with it.
 
     /// A pool is what everything else borrows from, so it starts first and
     /// closes last. Without saying so, the order came from however the

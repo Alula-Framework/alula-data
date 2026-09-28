@@ -65,9 +65,20 @@ public final class ValkeyCache: Cache, Sendable {
     /// store is unwell.
     public let client: ValkeyClient
     private let logger: Logger
-    private let breaker: Breaker
+    let breaker: Breaker
     private let storeErrors = Counter(label: "alula.cache.store_errors", dimensions: [("store", "valkey")])
 
+    /// A cache with its own client. Dials nothing, and `client.run()` must be
+    /// running before it is used — the module's service arranges that.
+    ///
+    /// - Parameters:
+    ///   - settings: `cache.valkey.*`.
+    ///   - breakerThreshold: Consecutive store-health failures before the
+    ///     store is skipped. Must be positive.
+    ///   - breakerCoolOff: How long it is skipped before one probe is let
+    ///     through.
+    ///   - logger: Where the client and the breaker log.
+    /// - Throws: An error building the client's TLS configuration.
     public init(
         settings: ValkeyCacheSettings,
         breakerThreshold: Int = ValkeyCache.defaultBreakerThreshold,
@@ -86,6 +97,8 @@ public final class ValkeyCache: Cache, Sendable {
 
     // MARK: - Cache
 
+    /// The cached bytes, or `nil` on a miss — and on any failure, or while
+    /// the breaker is skipping the store. Never throws.
     public func get(_ key: CacheKey) async -> Data? {
         guard breaker.admit() else { return nil }
         do {
@@ -98,12 +111,17 @@ public final class ValkeyCache: Cache, Sendable {
         }
     }
 
+    /// Stores `value` with native expiry, or with none when `ttl` is `nil`.
+    /// A `ttl` that is not positive stores nothing. A failure is logged and
+    /// counted, and the value is simply not cached.
     public func set(_ key: CacheKey, value: Data, ttl: Duration?) async {
-        guard breaker.admit() else { return }
         // A TTL that has already run out is not a set with a negative expiry —
         // that would tell the server to delete the key — it is a value not
-        // worth caching. Nothing to do, locally, without a round trip.
+        // worth caching. Nothing to do, locally, without a round trip. Checked
+        // before `admit()`: admitted as the half-open probe, returning here
+        // would never report back and hold the breaker open for good.
         if let ttl, ttl.wholeMillisecondsIfPositive == nil { return }
+        guard breaker.admit() else { return }
         do {
             try await client.set(
                 storageKey(key),
@@ -116,6 +134,9 @@ public final class ValkeyCache: Cache, Sendable {
         }
     }
 
+    /// Removes the entry. A failure is logged and counted, not thrown — so
+    /// during an outage the entry is **not** removed, and is served again
+    /// once the store is back, until its TTL runs out.
     public func evict(_ key: CacheKey) async {
         guard breaker.admit() else { return }
         do {
@@ -228,6 +249,10 @@ public final class ValkeyCache: Cache, Sendable {
     private func noteFailure(_ operation: String, error: any Error) {
         storeErrors.increment()
         guard Self.classify(error) == .storeUnhealthy else {
+            // No evidence either way. If this call was the half-open probe,
+            // let the next caller probe instead: holding the gate for a
+            // report that never comes kept the cache off until restart.
+            breaker.abandonProbe()
             logger.debug("valkey cache operation failed open", metadata: [
                 "operation": "\(operation)", "error": "\(error)",
             ])
@@ -307,6 +332,14 @@ public final class ValkeyCache: Cache, Sendable {
                 state.reopenAt = nil
                 state.probeInFlight = false
             }
+        }
+
+        /// The probe, if one is out, ended with no evidence about the store —
+        /// cancelled, or failed for a reason that is not the store's health.
+        /// The next caller probes instead. Neither a success nor a failure:
+        /// the count and the cool-off are left as they are.
+        func abandonProbe() {
+            state.withLock { $0.probeInFlight = false }
         }
 
         /// Returns true when this failure tripped the breaker.

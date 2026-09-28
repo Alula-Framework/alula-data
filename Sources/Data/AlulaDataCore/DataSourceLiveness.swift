@@ -21,6 +21,12 @@ public struct DataSourceLiveness: Sendable {
 
     private let probe: @Sendable () async throws -> Void
 
+    /// - Parameters:
+    ///   - datasourceName: The datasource's configured name; the readiness
+    ///     check is named `datasource.<name>`.
+    ///   - probe: The store's liveness check, usually the pool's `ping()`.
+    ///     Returning means live; throwing means not. It should answer promptly
+    ///     rather than queue for a connection.
     public init(datasourceName: String, probe: @escaping @Sendable () async throws -> Void) {
         self.datasourceName = datasourceName
         self.probe = probe

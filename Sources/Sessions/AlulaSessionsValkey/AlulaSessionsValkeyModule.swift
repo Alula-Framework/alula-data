@@ -43,6 +43,7 @@ public struct AlulaSessionsValkeyModule: AlulaModule {
     /// database, and readiness said yes through it.
     public let healthChecks: [HealthCheck]
 
+    /// Reads `sessions.valkey.*` and builds the store. Dials nothing.
     public init(configuration: Configuration) throws {
         let valkey = try ValkeySessionStore(
             settings: try ValkeySessionSettings.load(from: configuration))
@@ -55,6 +56,8 @@ public struct AlulaSessionsValkeyModule: AlulaModule {
         ]
     }
 
+    /// Traps. Build the module with ``init(configuration:)``, which
+    /// `alulaComposeModules` does.
     public init() {
         preconditionFailure(
             "AlulaSessionsValkeyModule takes its configuration in init(configuration:), so it "
@@ -63,10 +66,15 @@ public struct AlulaSessionsValkeyModule: AlulaModule {
                 + "yourself and use the entry point taking module instances.")
     }
 
+    /// Runs the store's client pool for the application's lifetime. Every
+    /// request that loads or saves a session borrows from it, which is why it
+    /// starts before the transport and stops after it.
     public var service: (any Service)? {
         ValkeySessionClientService(store: valkey)
     }
 
+    /// Infrastructure: started before, and stopped after, the transport
+    /// whose requests load sessions.
     public var serviceShutdownPhase: ServiceShutdownPhase { .infrastructure }
 }
 

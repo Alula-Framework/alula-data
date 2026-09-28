@@ -7,9 +7,25 @@ import PostgresNIO
 import ServiceLifecycle
 import Synchronization
 
-/// The Postgres pool behind the `DataSource` seam (design, Alula Data
-/// Core /): one per configured datasource, registered `.singleton`, its
-/// long-running work handed to the `ServiceGroup` via `AlulaModule.service`.
+/// The Postgres pool behind the `DataSource` seam: one per configured
+/// datasource, built and provided by `PostgresDataModule`, its long-running
+/// work handed to the `ServiceGroup` via `AlulaModule.service`.
+///
+/// ## What it guarantees
+///
+/// - A fixed number of connections, all dialled at start; it never grows.
+/// - A caller that can await queues for `checkoutTimeout`, then fails with
+///   `DataSourceError` — `unreachable` when the pool is empty because
+///   reconnecting keeps failing, `poolExhausted` otherwise.
+/// - A connection is handed to the next borrower only after any transaction
+///   left open on it is rolled back and, with ``resetOnRelease``, its session
+///   is reset. A connection that cannot be rolled back or reset is dropped and
+///   replaced.
+/// - Broken connections are replaced with backoff for as long as the pool
+///   runs, so an outage ends without a restart.
+///
+/// It does not probe idle connections, publish metrics, or queue strictly in
+/// arrival order. See Docs/operations.md.
 ///
 /// ## Why this pool exists (design delta P1 — see SPIKE-FINDINGS.md)
 ///
@@ -64,10 +80,10 @@ public final class PostgresDataSource: DataSource, Sendable {
         var phase: Phase = .idle
         var available: [PostgresConnection] = []
         var checkedOut: Set<ObjectIdentifier> = []
-        /// Connections the transaction coordinator has an open `BEGIN` on.
-        /// A connection released while still in here (a scope that died
-        /// between `begin` and `commit`/`rollback`) is rolled back before it
-        /// is offered for reuse.
+        /// Connections a `Repo` reported an open transaction on, through
+        /// Hangar's `TransactionObserver`. A connection released while still
+        /// in here (a rollback that failed, or a body that never reached its
+        /// commit) is rolled back before it is offered for reuse.
         var openTransactions: Set<ObjectIdentifier> = []
         var established = 0
         /// Connections released but not yet back in `available` — checked out
@@ -101,6 +117,16 @@ public final class PostgresDataSource: DataSource, Sendable {
     /// handed over whole by the escape-hatch initializer.
     private let connectionConfiguration: PostgresConnection.Configuration
 
+    /// A pool for `settings.url`. Dials nothing: ``start()`` does.
+    ///
+    /// - Parameters:
+    ///   - settings: Name, URL, pool size and checkout timeout.
+    ///   - resetOnRelease: Whether to `DISCARD ALL` between borrowers; see
+    ///     ``resetOnRelease``.
+    ///   - logger: Where the pool logs; defaults to
+    ///     `alula.data.postgres.<name>`.
+    /// - Throws: `PostgresDataSourceURLError` for a URL that does not parse,
+    ///   so a bad URL fails composition rather than the first query.
     public convenience init(
         settings: DataSourceSettings,
         resetOnRelease: Bool = true,
@@ -123,10 +149,9 @@ public final class PostgresDataSource: DataSource, Sendable {
     /// yourself.
     ///
     /// `datasource.<name>.url` covers what a URL can say, and deliberately
-    /// only that — `sslmode` maps onto PostgresNIO's three TLS modes and stops
-    /// there. Two things genuinely do not fit in a URL: a **unix domain
-    /// socket**, and the stricter libpq modes (`verify-ca`, `verify-full`)
-    /// that need a CA bundle to verify against.
+    /// only that — its `verify-ca` and `verify-full` modes check against the
+    /// system's trust roots. Two things genuinely do not fit in a URL: a
+    /// **unix domain socket**, and a private CA bundle to verify against.
     ///
     /// Both the URL parser's doc comment and the migrate CLI's error message
     /// told people to "construct the Configuration yourself" — and there was
@@ -203,10 +228,15 @@ public final class PostgresDataSource: DataSource, Sendable {
         await shutdown()
     }
 
-    /// Establishes all `poolSize` connections eagerly. A connection failure
-    /// here fails the service — and with it bootstrap — before any request
-    /// is served. Exposed separately from `run()` for test harnesses that
-    /// drive the lifecycle by hand.
+    /// Establishes all `poolSize` connections eagerly, one after another.
+    /// A connection failure here fails the service — and with it bootstrap —
+    /// before any request is served. Exposed separately from `run()` for test
+    /// harnesses that drive the lifecycle by hand.
+    ///
+    /// There is no retry: the first dial that fails closes the pool for good
+    /// and throws `DataSourceStartupError` (`ALD-DATA-1001`), which names the
+    /// host, port and database but never the URL or password. Calling this
+    /// twice traps.
     public func start() async throws {
         state.withLock { state in
             precondition(state.phase == .idle, "PostgresDataSource.start() called twice for datasource '\(name)'.")
@@ -279,6 +309,12 @@ public final class PostgresDataSource: DataSource, Sendable {
 
     /// Closes the pool: further checkouts throw `DataSourceError.closed`,
     /// pooled connections are closed now, in-flight ones as they come back.
+    ///
+    /// Waits up to 10 seconds for borrowed connections to come back and up to
+    /// 5 seconds for rollbacks and resets in progress, then closes what is
+    /// idle and returns; anything still out is closed when it is released.
+    /// Callers already queued are not woken: each receives `closed` when its
+    /// own timeout ends. A closed pool never reopens.
     public func shutdown() async {
         // Close the door first, then wait for connections still being reset.
         // Their completion handlers decrement `established` and close them;
@@ -550,6 +586,14 @@ public final class PostgresDataSource: DataSource, Sendable {
     /// before it says so as errors.
     public var waitingCallers: (now: Int, peak: Int) { waiters.counts }
 
+    /// Checks out a free connection now, or throws.
+    ///
+    /// Skips connections already known to be closed, and asks for
+    /// replacements when it finds any or when the pool is empty. Throws
+    /// `DataSourceError.closed` after ``shutdown()``, `notStarted` before
+    /// ``start()``, and when nothing is free, `unreachable` if the pool is
+    /// empty because reconnecting is failing, else `poolExhausted`. Every
+    /// connection it returns must be passed to ``release(_:)`` exactly once.
     public func checkout() throws -> PostgresConnection {
         guard let connection = try checkoutIfAvailable() else {
             throw emptyPoolError()
@@ -557,6 +601,15 @@ public final class PostgresDataSource: DataSource, Sendable {
         return connection
     }
 
+    /// Returns a connection from ``checkout()`` or
+    /// ``checkout(waitingUpTo:)``.
+    ///
+    /// Returns immediately; the work runs after it. A closed connection is
+    /// dropped and replaced. One with an open transaction gets `ROLLBACK`
+    /// first, and is dropped if that fails. With ``resetOnRelease`` it then
+    /// gets `DISCARD ALL`, and is dropped if that fails. Until that work
+    /// finishes the connection is available to nobody. Releasing a
+    /// connection twice, or one this pool did not hand out, traps.
     public func release(_ connection: PostgresConnection) {
         enum Disposition {
             case repool
@@ -613,11 +666,11 @@ public final class PostgresDataSource: DataSource, Sendable {
         case .dropBroken:
             replacementTrigger.yield()
         case .rollbackFirst:
-            // A scope died between begin and commit/rollback. The macro
-            // guarantees paired calls on every code path, so this is a leak
-            // (a lease stashed past its scope, a crashed task) — roll the
-            // connection back before anyone can reuse it, off the release
-            // path (release is synchronous and non-throwing by contract).
+            // The pool was told a transaction began and never that it
+            // ended: Hangar's rollback failed, or the work never reached its
+            // commit. Roll the connection back before anyone can reuse it,
+            // off the release path (release is synchronous and non-throwing
+            // by contract).
             logger.warning(
                 "connection returned to pool with an open transaction; rolling back",
                 metadata: ["datasource": "\(name)"]
@@ -793,8 +846,8 @@ public final class PostgresDataSource: DataSource, Sendable {
 
     // MARK: - Introspection (tests, Actuator)
 
-    /// Connections currently checked out. "Scope close returned the
-    /// connection" is `activeCheckouts == 0` after `withScope`.
+    /// Connections currently checked out. A lease returned its connection
+    /// when this is back to what it was before the lease.
     public var activeCheckouts: Int { state.withLock { $0.checkedOut.count } }
     /// Connections the pool knows to be inside a transaction.
     var openTransactionCount: Int { state.withLock { $0.openTransactions.count } }
@@ -804,6 +857,8 @@ public final class PostgresDataSource: DataSource, Sendable {
     public var establishedConnections: Int { state.withLock { $0.established } }
     /// Checkouts ever performed, including reuse.
     public var totalCheckouts: Int { state.withLock { $0.totalCheckouts } }
+    /// Between ``start()`` and ``shutdown()``: checkouts are served.
     public var isRunning: Bool { state.withLock { $0.phase == .running } }
+    /// After ``shutdown()``, or a failed ``start()``. Permanent.
     public var isClosed: Bool { state.withLock { $0.phase == .closed } }
 }
