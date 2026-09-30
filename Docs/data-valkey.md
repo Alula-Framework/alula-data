@@ -128,7 +128,7 @@ struct SessionRepository {
 }
 ```
 
-The repository is a `.singleton` holding the pool; `withConnection` leases a
+The repository is built once and holds the pool; `withConnection` leases a
 connection for the operation and returns it when the closure ends.
 
 Atomic batches (not transactions):
@@ -169,7 +169,7 @@ $ docker run -d --name alula-data-valkey -p 127.0.0.1:56379:6379 valkey/valkey:8
 $ docker run -d --name alula-data-redis  -p 127.0.0.1:56380:6379 redis:7-alpine
 $ export ALULA_VALKEY_TEST_URL="valkey://127.0.0.1:56379"
 $ export ALULA_REDIS_TEST_URL="redis://127.0.0.1:56380"
-$ swift test
+$ swift test --enable-all-traits
 ```
 
 CI should set both variables. The suites `FLUSHDB` between tests — point them
@@ -257,7 +257,7 @@ refinement of) the design doc, in its spirit.
 ## Boundary notes
 
 No caching abstraction, no PubSub, no migrations, no rollback-capable
-transaction (`multi` is a batch, and the module registers nothing that
+transaction (`multi` is a batch, and the module provides nothing that
 pretends otherwise), no vendor-specific commands in the guaranteed surface,
 no RediStack shim, no cluster topology management.
 

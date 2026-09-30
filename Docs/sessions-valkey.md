@@ -51,7 +51,7 @@ for the same reasons the cache adapter is not.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.59.0", traits: ["Web"]),
+.package(url: "https://github.com/Alula-Framework/alula.git", from: "0.60.0", traits: ["Web"]),
 .package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.24.0", traits: ["Valkey"]),
 …
 .product(name: "AlulaSessionsValkey", package: "alula-data"),
@@ -116,8 +116,8 @@ product: three methods over opaque bytes, every one of them throwing.
 A store of your own is a conformance and a module that provides it as
 `store: any SessionStore`; `AlulaSessionsModule` takes it by type, exactly
 as it takes this module's. The guide linked above has the worked example.
-`ValkeySessionStore.swift` here is a complete one in eighty lines and is
-the shape to copy: native expiry if the backend has it, `expiresAt` read
+`ValkeySessionStore.swift` here is a complete one, owner index included, and
+is the shape to copy: native expiry if the backend has it, `expiresAt` read
 from the record on load if it does not, and no fail-open.
 
 ## Signing out everywhere

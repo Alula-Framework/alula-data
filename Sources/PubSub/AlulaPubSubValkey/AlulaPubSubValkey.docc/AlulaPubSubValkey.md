@@ -69,7 +69,7 @@ publisher.
 
 ## One channel, every topic
 
-Every node publishes to and subscribes to a single Valkey channel, and a
+Every node publishes to and subscribes to a single Valkey channel, and an
 Alula `Message` names its own topic inside the frame. A channel per topic
 would mean re-subscribing every time a socket joined a room, which is the
 common case in exactly the applications this is for.

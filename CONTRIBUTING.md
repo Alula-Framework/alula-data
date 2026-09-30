@@ -1,51 +1,62 @@
 # Contributing
 
-Thanks for your interest in alula-migrate.
+Thanks for your interest in alula-data.
 
 ## Getting set up
 
-The unit suite needs nothing:
+Every target builds only with its trait on, so a build of this repository
+needs them all. A plain `swift build` fails by design (see the README's
+[Traits](README.md#traits)):
 
 ```bash
-swift build
-swift test          # 122 unit tests; the 7 integration tests skip
+swift build --enable-all-traits
+swift test  --enable-all-traits   # the integration suites skip without servers
 ```
 
-The integration suite needs a **dedicated, throwaway** PostgreSQL:
+The integration suites need real servers. `scripts/test.sh` starts
+**throwaway** Postgres and Valkey containers, sets the variables the suites
+read (`ALULA_POSTGRES_TEST_DATABASE_URL`, `ALULA_MIGRATE_TEST_DATABASE_URL`,
+`ALULA_VALKEY_TEST_URL` and the outage switches), runs everything, and
+removes them:
 
 ```bash
-docker run -d --name alula-migrate-test \
-  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=alula_migrate_test \
-  -p 55432:5432 postgres:16-alpine
-
-export ALULA_MIGRATE_TEST_DATABASE_URL=\
-"postgres://postgres:postgres@localhost:55432/alula_migrate_test?sslmode=disable"
-
-swift test          # all 129
+./scripts/test.sh                 # everything, integration tests included
+./scripts/test.sh --filter Foo    # arguments pass through to swift test
 ```
 
-> **Dedicated, genuinely.** The integration suite drops and recreates its
-> fixture tables. Point it at a database you care about and it will delete
-> things. Each run uses a ledger and advisory-lock key unique to its process,
-> so two concurrent runs will not deadlock on each other — but they do share
-> fixture tables, so give each run its own server.
+> **Throwaway, genuinely.** The suites drop and recreate fixture tables and
+> `FLUSHDB` between tests, and the outage suites stop and restart their own
+> servers mid-test. Never point the variables at a server you care about.
 
 ## Before opening a pull request
 
 ```bash
-swift build -Xswiftc -warnings-as-errors
-swift test                                  # with the database URL set
-ALULA_MIGRATE_BUILD_DOCS=1 swift package generate-documentation \
-    --target AlulaMigrate --warnings-as-errors
+ALULA_STRICT_WARNINGS=1 swift build --enable-all-traits
+./scripts/test.sh
+python3 CI/check-diagnostic-quotes.py \
+    --docs README.md Docs Diagnostics Sources --source ALD=Sources
 ```
 
-CI runs exactly these on Swift 6.3.3 — the one toolchain the matrix pins, and
-the floor `swift-tools-version: 6.3` requires — with a Postgres service
-container, and **fails rather than skips** if the database is unreachable. A
-green run that quietly skipped every integration test proves almost nothing,
-and this suite's entire value is what it proves against real Postgres.
+If you touched a `.docc` catalogue or doc comments, build that target's
+documentation the way CI does, then revert the `Package.resolved` change the
+docs plugin makes:
 
-## The rules that govern changes here
+```bash
+mkdir -p ./docs && ALULA_BUILD_DOCS=1 swift package --enable-all-traits \
+    --allow-writing-to-directory ./docs/AlulaMigrate \
+    generate-documentation --target AlulaMigrate \
+    --warnings-as-errors --output-path ./docs/AlulaMigrate
+```
+
+CI runs on Swift 6.3.3 — the one toolchain the matrix pins, and the floor
+`swift-tools-version: 6.3` requires — with Postgres and Valkey service
+containers. A green run that quietly skipped every integration test proves
+almost nothing, and this package's value is mostly what it proves against
+real servers.
+
+## The rules that govern migrations
+
+These apply to `AlulaMigrate` and `AlulaMigrateCore`.
 
 **A migration is either fully applied and recorded, or neither.** Every change
 to the run path has to preserve that. If you are adding a step between the
@@ -64,7 +75,16 @@ someone reading it during an incident.
 false there is no rollback, and the code says so plainly rather than
 implying safety it cannot provide.
 
-## Testing
+**Some identifiers still say "flight", on purpose.** The checksum domain
+`flight-migrate:v1`, the advisory-lock key (the bytes `FLIGHTMG`) and the
+legacy ledger name `flight_migrations` date from before the project became
+Alula. Every recorded checksum was computed with that prefix, a pre-rename
+migrator still takes that lock, and a pre-rename database keeps its ledger
+under that name until a locked run renames it. Changing any of them reports
+every applied migration as drifted, lets two migrators run at once, or loses
+the ledger (alula's DECISIONS.md, D45).
+
+## Testing migrations
 
 `FakeDatabase` records the exact operation sequence — `BEGIN`, each statement,
 the bookkeeping write, `COMMIT` — and rejects nested transactions and commits

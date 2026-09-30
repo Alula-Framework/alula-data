@@ -15,7 +15,7 @@ datasource:
     url: postgres://app@localhost:5432/app
     pool-size: 10
     checkout-timeout-ms: 5000                 # how long a caller queues before failing
-    reset-on-release: true                    # DISCARD ALL between scopes
+    reset-on-release: true                    # DISCARD ALL between borrowers
 ```
 
 The key under `datasource:` is `Name.name` from the module's generic parameter

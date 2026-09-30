@@ -1,7 +1,7 @@
 # Alula Data Postgres
 
-A pooled connection source, per-operation leases, and a DI-registered
-repository layer — for Postgres, on top of Alula Core, Alula Data Core, and
+A pooled connection source, per-operation leases, and a repository layer
+the application's graph wires — for Postgres, on top of Alula Core, Alula Data Core, and
 Hangar.
 
 This package is *composition plus stereotypes*, not a from-scratch data
@@ -70,8 +70,9 @@ struct UserRepository {
 }
 ```
 
-A repository is a `.singleton` — the default — because what it holds is the
-pool, which every request shares. Nothing here is request-scoped, so a slow
+A repository is built once, at composition — alula has no other lifetime —
+and that is right here, because what it holds is the pool, which every
+request shares. Nothing here is request-scoped, so a slow
 handler holds no connection between its queries.
 
 The raw connection is available the same way, through
@@ -281,14 +282,15 @@ Run from a migrate binary or CI step, **never at boot**.
 
 ## Testing this package
 
-Unit tests run bare. Integration tests need a real Postgres and are gated on
-one environment variable:
+`./scripts/test.sh` sets all of this up. By hand: unit tests run bare, and
+the integration tests need a real Postgres and are gated on one environment
+variable:
 
 ```
 $ docker run -d --name alula-data-pg -e POSTGRES_PASSWORD=alula \
     -e POSTGRES_DB=alula_data_test -p 127.0.0.1:55432:5432 postgres:16-alpine
 $ export ALULA_POSTGRES_TEST_DATABASE_URL="postgres://postgres:alula@127.0.0.1:55432/alula_data_test?sslmode=disable"
-$ swift test
+$ swift test --enable-all-traits
 ```
 
 The suite prepares its schema through `PostgresMigrations.migrate` — the same
@@ -298,7 +300,7 @@ path production uses — so the migrations are exercised on every run.
 
 | # | Delta | Why |
 |---|---|---|
-| P1 | This package owns a small fixed-size pool (`PostgresDataSource`) instead of leasing from `PostgresClient` | The sketch called `PostgresClient.leaseConnection()`, which is **private**; the modern client only lends connections inside async closures. The pool is deliberately thin — eager dial at service start, a `Mutex` free list, checkout that queues up to `checkout-timeout-ms`, and a replacement loop — and everything protocol-level stays PostgresNIO's. `PostgresClient` is still used where its shape fits: the migrate wiring, and the Alula-free binding product. |
+| P1 | This package owns a small fixed-size pool (`PostgresDataSource`) instead of leasing from `PostgresClient` | The sketch called `PostgresClient.leaseConnection()`, which is **private**; the modern client only lends connections inside async closures. The pool is deliberately thin — eager dial at service start, a `Mutex` free list, checkout that queues up to `checkout-timeout-ms`, and a replacement loop — and everything protocol-level stays PostgresNIO's. `PostgresClient` is still used where its shape fits: the migrate wiring (`PostgresMigrations`), and `AlulaMigrate` itself, which depends on no Alula module. |
 | P2 | A connection is leased for **one operation**, not for a request | `withRepo`/`withConnection` bracket the lease. The alternative — a `.scoped` connection held for the whole request — pinned a connection for as long as the scope lived, which for a WebSocket upgrade meant one connection per open browser tab. Per-operation leasing makes the hold as short as the work. |
 | P3 | Transactions are Hangar's `repo.transaction { }`, not an annotation | A `Repo` fixes `inTransaction` at construction, so an ambient repo built before a unit of work always believed it was outside one — it emitted a literal `COMMIT` when nested, ending the enclosing transaction and making writes durable that the caller meant to roll back. Constructing the repo per operation removes the state that could go stale, and Hangar's own bracket tracks depth and emits savepoints. |
 | P4 | A connection returned mid-transaction is rolled back before reuse | Every path through `repo.transaction` pairs begin with commit or rollback, but a torn task could still return a connection with a transaction open, and reusing it would leak that state into the next borrower. Every `Repo` the pool builds carries Hangar's `TransactionObserver`, so the pool knows which connections are mid-transaction; `release` sends `ROLLBACK` first and, with `reset-on-release` on, `DISCARD ALL` after it, and drops the connection if the rollback fails. That holds whatever the reset setting. For a while it did not: nothing told the pool a transaction was open, and `DISCARD ALL` failing inside the transaction block was the only guard, which turning `reset-on-release` off removed. |

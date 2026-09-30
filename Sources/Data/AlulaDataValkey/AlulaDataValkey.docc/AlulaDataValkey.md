@@ -74,7 +74,7 @@ earlier ones applied.
 That is why `multi` is named for what it is rather than borrowed from the
 Postgres driver's vocabulary. A shared "transaction" spelling across the two
 stores would mean two different things depending on which datasource was
-registered, and the difference would surface as data that quietly did not
+listed, and the difference would surface as data that quietly did not
 roll back.
 
 ## Changesets

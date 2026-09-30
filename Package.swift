@@ -17,8 +17,8 @@ import PackageDescription
 // PostgresNIO, valkey-swift, NIOSSL, and swift-crypto; with them it resolves
 // none of those.
 //
-//     .package(url: "...alula-data.git", from: "0.23.0")                      // cache + protocols
-//     .package(url: "...alula-data.git", from: "0.23.0", traits: ["Postgres"]) // + Postgres
+//     .package(url: "...alula-data.git", from: "0.24.0")                      // cache + protocols
+//     .package(url: "...alula-data.git", from: "0.24.0", traits: ["Postgres"]) // + Postgres
 //
 // Building this package itself: `swift test --enable-all-traits`.
 let package = Package(
@@ -71,7 +71,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        // traits: [] — alula-data needs only the container and lifecycle,
+        // traits: [] — alula-data needs only composition and lifecycle,
         // never AlulaWeb. Opting out of alula's default "Web" trait keeps
         // Hummingbird, NIO, and the TLS stack out of every consumer that
         // wants a cache or a data source but not an HTTP server.

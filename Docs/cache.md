@@ -11,7 +11,7 @@ in place of runtime proxies**, on top of Alula Core.
 | `@Cacheable` / `@CacheEvict` / `@CachePut` | Body macros expanding INTO the method body — no proxy, so self-invocation caches (the Spring footgun that cannot occur here) |
 | `CacheKeyContributing` | Explicit, compiler-checked key derivation; primitives ship, custom types conform deliberately |
 | `CacheCodec` / `JSONCacheCodec` | Codable values, JSON by default, decode failure = miss |
-| `CacheRuntime` + `AlulaCaches` | The runtime the expansions call, reached through a `AlulaTransactions`-style seam (task-local override → installed runtime → warn-once no-op) |
+| `CacheRuntime` + `AlulaCaches` | The runtime the expansions call, reached through `AlulaCaches`: a task-local override, then the runtime `AlulaCacheModule` installed, then a warn-once no-op |
 | `SingleFlight` | Local stampede protection — leader computes inline, waiters receive the encoded bytes, errors propagate, cancellation hands leadership over |
 | `InMemoryCache` | Actor-guarded LRU with TTL, bounded by default; hit, insert and evict are all O(1) |
 | `AlulaCacheModule` | Takes an optional `adapter: (any Cache)?` — the adapter module provides it, else in-memory |
@@ -122,7 +122,7 @@ package's intent, in its spirit.
 Worth knowing before sizing anything: an in-memory hit is not free, and not
 because of the store. Values cross the `Cache` seam as `Data`, so every hit
 pays a JSON decode, and the decoder is constructed per call. That is
-deliberate — waiters in a single alula receive encoded bytes, and the
+deliberate — waiters coalesced by `SingleFlight` receive encoded bytes, and the
 in-memory adapter behaving exactly like the Valkey one is what makes swapping
 them a configuration change rather than a behaviour change — but it means the
 in-memory adapter is a *cache*, not a memoization table. Caching a value that

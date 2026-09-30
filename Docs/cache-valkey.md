@@ -6,7 +6,7 @@ where an in-memory cache gives each instance its own inconsistent copy.
 
 Deliberately **not** built on [Alula Data Valkey](data-valkey.md): a cache
 adapter needs `GET`, `SET`, `UNLINK`, and expiry — not repositories,
-`Scope`-bound checkout, or `DataSource` conformance. Shared *library*
+per-operation leasing, or `DataSource` conformance. Shared *library*
 dependency (valkey-swift), no dependency between the two targets. And unlike
 the data driver's hand-rolled lender-task pool (its delta V1), this adapter
 holds a `ValkeyClient` — the driver's own pool, already a ServiceLifecycle
@@ -84,7 +84,7 @@ $ docker run -d --name alula-cache-valkey -p 127.0.0.1:56379:6379 valkey/valkey:
 $ docker run -d --name alula-cache-redis  -p 127.0.0.1:56380:6379 redis:7-alpine
 $ export ALULA_VALKEY_TEST_URL="valkey://127.0.0.1:56379"
 $ export ALULA_REDIS_TEST_URL="redis://127.0.0.1:56380"
-$ swift test
+$ swift test --enable-all-traits
 ```
 
 The suites `FLUSHDB` between tests — point them at throwaway servers only.

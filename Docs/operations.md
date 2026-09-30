@@ -365,8 +365,8 @@ lasts only as long as that statement. From then on a job belongs to its
 worker by **lease**, not by lock: the worker renews the lease every third of
 `queue.lease-seconds` while the job runs.
 
-**Fencing.** Completing, retrying or discarding a job matches on the attempt
-number that claimed it. A worker whose lease expired and whose job was
+**Fencing.** Completing, retrying, discarding or handing back a job matches
+on the attempt number that claimed it. A worker whose lease expired and whose job was
 claimed again finds its result update matches nothing, so the second
 attempt's outcome is the one recorded.
 
@@ -376,6 +376,15 @@ until its lease expires and is then claimed again with the next attempt
 number. Whatever the dead attempt did outside the database has already
 happened, so execution is **at least once**, and handlers must tolerate
 running twice.
+
+**Shutdown is not a failure.** Shortly before the shutdown deadline the
+worker cuts off the jobs it still holds and hands them back
+(`PostgresQueueStore.handBack`): each is made `available` again with its
+attempt decremented in the same fenced `UPDATE`, so the next claim runs it at
+the same attempt number, even its last. A worker that dies instead spends the
+attempt. When the worker hands back, and why only with a shutdown timeout
+configured, is in
+[alula's queue guide](https://github.com/Alula-Framework/alula/blob/main/Docs/queue.md#shutdown).
 
 **Enqueueing inside a transaction.** `enqueue(_:in: tx)` writes the job
 through your transaction, so it exists exactly when the rows beside it do.
@@ -491,7 +500,6 @@ until the process restarted.)
 
 ### Recovery
 
-Beyond the defect above, nothing needs restarting for the client-based
-stores: valkey-swift's pool breaker heals itself
+Nothing needs restarting for the client-based stores: valkey-swift's pool breaker heals itself
 ([CV2](cache-valkey.md#design-deltas)), the session and limiter stores answer
 again as soon as the client does, and PubSub resubscribes with backoff.

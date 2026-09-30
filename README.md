@@ -57,7 +57,7 @@ you need.
 | `AlulaSessionsValkey` | Sessions shared across replicas over Valkey: the store behind alula's `AlulaSessionsModule`. Requires the `Valkey` trait. |
 | `AlulaRateLimitValkey` | A rate limit enforced once across every replica rather than once per replica: GCRA as a single `EVAL`. Requires the `Valkey` trait. |
 | `AlulaDataValkey` | Valkey data source. |
-| `*Testing` | Conformance suites and fakes — including `DataSourceConformance`, the contract every data source must satisfy. |
+| `AlulaDataTesting` / `AlulaCacheTesting` | Conformance suites and fakes — including `DataSourceConformance`, the contract every data source must satisfy, and `RecordingCache`. Not part of alula's `AlulaTesting` umbrella, which re-exports only alula's own testing modules: list these in a test target beside it. |
 
 Per-product documentation lives in [Docs/](Docs/).
 [Docs/operations.md](Docs/operations.md) is the page for running it in
@@ -86,7 +86,7 @@ consumer and asserting no gated dependency reached it.
 | | Requirement |
 | --- | --- |
 | Swift | 6.3+ — see [Traits](#traits) for why |
-| alula | **0.56.0 or later** (Package.swift's floor) |
+| alula | **0.59.0 or later** (Package.swift's floor) |
 | Hangar | 0.14.0 or later (resolved only with the `Postgres` trait) |
 | Deployment target | macOS 15+, or Linux |
 | Building on macOS | the macOS 26 SDK (Xcode 26) |
@@ -97,7 +97,7 @@ The last two rows are different requirements. What you build runs on macOS 15;
 *compiling* it on a Mac needs the newer SDK, because alula's configuration
 layer resolves to FoundationEssentials only where the SDK provides it. alula
 releases before 0.21.2 also call a macOS 26+ API at a macOS 15 deployment
-target, so a Mac could not build against them at any SDK; the 0.56.0 floor is
+target, so a Mac could not build against them at any SDK; the 0.59.0 floor is
 well past that. Verified on `macos-26`, which is what the CI job runs.
 
 ## Diagnostics
