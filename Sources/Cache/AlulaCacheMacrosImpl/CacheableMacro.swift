@@ -2,9 +2,8 @@ import SwiftSyntax
 import SwiftSyntaxMacros
 
 /// `@Cacheable`: check cache; on hit return it; on miss call
-/// the body, store the result, return it — expanded INTO the method body
-///, the same shape as Core's `@Transactional`: the original body
-/// rides an immediately-invoked-style closure (here, the runtime's trailing
+/// the body, store the result, return it — expanded INTO the method body.
+/// The original body rides an immediately-invoked-style closure (here, the runtime's trailing
 /// closure) with an explicit signature, and the expansion reaches runtime
 /// state through the fully-qualified `AlulaCache.AlulaCaches` seam.
 public struct CacheableMacro: BodyMacro {

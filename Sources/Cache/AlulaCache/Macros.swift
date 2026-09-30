@@ -1,14 +1,14 @@
-/// The declarative caching annotations — body macros (SE-0415),
-/// the same expansion model as Core's `@Transactional`: the caching logic
-/// expands INTO the method body, so there is no proxy and no
+/// The declarative caching annotations — body macros (SE-0415): the caching
+/// logic expands INTO the method body, so there is no proxy and no
 /// self-invocation footgun.
 ///
 /// Shared constraints, diagnosed at the annotation site:
 /// - the method must be `async` (the `Cache` protocol is async);
 /// - `@Cacheable`/`@CachePut` methods must return a `Codable & Sendable`
 ///   value;
-/// - a function takes at most ONE body macro — `@Cacheable` and
-///   `@Transactional` do not compose on a single method;
+/// - a function takes at most ONE body macro, so two of these annotations
+///   (or one and another package's body macro) do not compose on a single
+///   method;
 /// - `excluding:` names must match parameter names (the internal name —
 ///   `for productID:` excludes as `"productID"`).
 

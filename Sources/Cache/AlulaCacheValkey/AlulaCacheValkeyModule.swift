@@ -6,7 +6,7 @@ import ServiceLifecycle
 ///
 /// ```swift
 /// await Alula.run(configuration: try .load(), modules: [
-///     AlulaCacheModule.self,          // pulled in via dependencies anyway
+///     AlulaCacheModule.self,          // takes the Valkey store as its adapter
 ///     AlulaCacheValkeyModule.self,
 /// ], composedBy: alulaComposeModules)
 /// ```
@@ -50,8 +50,8 @@ public struct AlulaCacheValkeyModule: AlulaModule {
     }
 }
 
-/// Runs the Valkey client pool for the application's lifetime.
-/// Resolves the cache post-freeze and runs its client pool.
+/// Runs the Valkey client pool for the application's lifetime. Handed the
+/// cache the module built, rather than resolving it after composition.
 struct ValkeyCacheClientService: Service {
     let cache: ValkeyCache
 

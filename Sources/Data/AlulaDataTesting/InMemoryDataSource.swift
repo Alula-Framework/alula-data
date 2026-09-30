@@ -2,12 +2,12 @@ import AlulaDataCore
 import Synchronization
 
 /// A connection backed by nothing. Reference semantics on purpose:
-/// scoping tests assert connection *identity* (`===`) — "same connection
-/// within one scope" is the property under test.
+/// leasing tests assert connection *identity* (`===`) — "same connection
+/// within one lease" is the property under test.
 public final class InMemoryConnection: Sendable {
     /// Stable id, assigned in creation order starting at 1 — lets tests
-    /// assert reuse ("the second scope got the first scope's connection
-    /// back") without holding references across scopes.
+    /// assert reuse ("the second lease got the first lease's connection
+    /// back") without holding references across leases.
     public let id: Int
     /// The pool this connection belongs to, by name.
     public let datasourceName: String
@@ -168,8 +168,9 @@ public final class InMemoryDataSource: DataSource, Sendable {
 
     // MARK: - Test introspection
 
-    /// Connections currently checked out. The assertion "scope close
-    /// returned the connection" is `activeCheckouts == 0` after `withScope`.
+    /// Connections currently checked out. The assertion "the lease
+    /// returned the connection" is `activeCheckouts == 0` after
+    /// `withConnection` returns.
     public var activeCheckouts: Int {
         state.withLock { $0.checkedOut.count }
     }

@@ -7,7 +7,7 @@ import Testing
 /// These properties were previously re-derived by hand in each driver's own
 /// tests — which meant each driver tested what its author remembered the
 /// contract to be, and a property nobody thought to check went unchecked
-/// everywhere. Scope-per-connection, release-on-throw and shutdown behaviour
+/// everywhere. Release-to-pool, release-on-throw and shutdown behaviour
 /// are exactly the kind of thing that is obvious until a pool gets it wrong.
 ///
 /// A driver runs the whole suite in one test:
@@ -15,7 +15,11 @@ import Testing
 /// ```swift
 /// @Test func conformsToDataSourceContract() async throws {
 ///     try await DataSourceConformance.verify(
-///         make: { try await PostgresDataSource.started(settings: .test) },
+///         make: {
+///             let source = try PostgresDataSource(settings: .test)
+///             try await source.start()
+///             return source
+///         },
 ///         shutdown: { await $0.shutdown() })
 /// }
 /// ```

@@ -49,8 +49,9 @@ public struct AlulaPubSubValkeyModule: AlulaModule {
     /// this package's own shutdown concern and not part of the seam above.
     private let valkey: ValkeyPubSubAdapter
 
-    /// Held so `configure` can register the same instance the service runs,
-    /// rather than constructing a second client that dials Valkey again.
+    /// Held so the service runs the same client the adapter and the health
+    /// check use, rather than constructing a second one that dials Valkey
+    /// again.
     private let client: ValkeyPubSubClient
 
     /// `pubsub.valkey`, for readiness: a `PING` on the publishing client.
@@ -98,8 +99,8 @@ public struct AlulaPubSubValkeyModule: AlulaModule {
     }
 }
 
-/// Holds the client so the module can register it once and the service can
-/// run it, without constructing two clients that each dial Valkey.
+/// Holds the client so the module builds it once and the service runs it,
+/// without constructing two clients that each dial Valkey.
 public final class ValkeyPubSubClient: Sendable {
     /// The client both publishing and subscribing use. Its `run()` is the
     /// module's service, and must be running before the client is used.

@@ -27,14 +27,15 @@ import Synchronization
 /// It does not probe idle connections, publish metrics, or queue strictly in
 /// arrival order. See Docs/operations.md.
 ///
-/// ## Why this pool exists (design delta P1 — see SPIKE-FINDINGS.md)
+/// ## Why this pool exists (design delta P1 — see Docs/data-postgres.md)
 ///
 /// The design doc's sketch leases connections from PostgresNIO's
 /// `PostgresClient`. That cannot satisfy the seam: `PostgresClient` exposes
 /// only scoped async lending (`withConnection`) — its `leaseConnection()` is
 /// private — while `DataSource.checkout()` must be *synchronous* (Alula
-/// Data Core delta D1: scoped component factories are synchronous, and a
-/// transaction coordinator's `begin()` is synchronous by Alula Core).
+/// Data Core delta D1: the scoped component factories and the transaction
+/// coordinator that once called it were synchronous; both are gone, and the
+/// primitive stays).
 /// So this package owns a deliberately small pool of `PostgresConnection`s:
 /// eager dial at service start, Mutex-guarded free list, prompt
 /// checkout-or-throw for the synchronous primitive, a parked queue for callers
@@ -48,7 +49,7 @@ import Synchronization
 public final class PostgresDataSource: DataSource, Sendable {
     public typealias Connection = PostgresConnection
 
-    /// The datasource's name — config key segment and registration qualifier.
+    /// The datasource's name: the `<name>` segment of its configuration keys.
     public let name: String
     /// Fixed pool size: every connection is dialed at `start()`; checkout
     /// never grows the pool — a caller past the ceiling queues rather than
@@ -104,12 +105,12 @@ public final class PostgresDataSource: DataSource, Sendable {
     private let waiters = ConnectionWaiters()
 
     /// Whether a released connection is reset with `DISCARD ALL` before it
-    /// is offered to the next scope.
+    /// is offered to the next borrower.
     ///
     /// On by default, and only worth turning off for a deployment that is
     /// certain nothing it runs mutates session state — no `SET ROLE`, no
     /// `SET search_path`, no session GUCs, no prepared statements, no
-    /// temporary tables. The saving is one round trip per scope; the cost of
+    /// temporary tables. The saving is one round trip per lease; the cost of
     /// being wrong is one request reading another tenant's rows.
     public let resetOnRelease: Bool
 

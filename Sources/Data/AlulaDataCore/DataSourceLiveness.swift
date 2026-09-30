@@ -1,12 +1,12 @@
 import AlulaCore
 
-/// A datasource's liveness probe as a component — the store-agnostic surface
+/// A datasource's liveness probe as a value — the store-agnostic surface
 /// Alula Actuator reads.
 ///
 /// Each datasource module builds one of these per named datasource,
 /// wrapping the pool's `ping()`. Module
 /// *health* — did the pool's service start and stay up — is tracked by
-/// bootstrap with no per-store instrumentation; this component is the second,
+/// bootstrap with no per-store instrumentation; this probe is the second,
 /// complementary signal: is the store on the other end of the pool actually
 /// answering right now.
 ///

@@ -5,17 +5,17 @@ import ServiceLifecycle
 import Synchronization
 import Valkey
 
-/// The Valkey/Redis pool behind the `DataSource` seam (design, Alula
-/// Data Core /): one per configured datasource, registered `.singleton`,
-/// its long-running work handed to the `ServiceGroup` via
+/// The Valkey/Redis pool behind Alula Data Core's `DataSource` seam: one per
+/// configured datasource, built once by `ValkeyDataModule` and provided to the
+/// graph, its long-running work handed to the `ServiceGroup` via
 /// `AlulaModule.service`.
 ///
-/// ## Why this pool exists (design delta V1 — see README.md)
+/// ## Why this pool exists (design delta V1 — see Docs/data-valkey.md)
 ///
 /// valkey-swift's `ValkeyClient` exposes only scoped async lending
 /// (`withConnection`); its `connect()` is internal. The seam needs a
-/// *synchronous* `checkout()` (Alula Data Core delta D1: scoped component
-/// factories are synchronous), so — exactly as Alula Data Postgres resolved
+/// *synchronous* `checkout()` (Alula Data Core delta D1: the scoped component
+/// factories that once called it were synchronous), so — exactly as Alula Data Postgres resolved
 /// the same tension with PostgresNIO (its delta P1) — this package owns a
 /// deliberately small pool. The one twist valkey-swift adds: the only public
 /// way to *hold* a connection is inside `ValkeyConnection.withConnection`'s
@@ -30,7 +30,7 @@ import Valkey
 /// pool is live (Alula Core bootstrap ordering), and graceful shutdown
 /// drains it.
 ///
-/// ## Convergence with the Postgres pool (design delta V2)
+/// ## Convergence with the Postgres pool (design delta V7)
 ///
 /// These two pools are the same machine with different dial tones, and for a
 /// while every fix landed on exactly one of them: outage-recovery backoff here
@@ -42,7 +42,7 @@ import Valkey
 public final class ValkeyDataSource: DataSource, Sendable {
     public typealias Connection = ValkeyConnection
 
-    /// The datasource's name — config key segment and registration qualifier.
+    /// The datasource's name: the `<name>` segment of its configuration keys.
     public let name: String
     /// Fixed pool size: every connection is dialed at `start()`; checkout
     /// never grows the pool — a caller past the ceiling queues rather than
@@ -55,18 +55,18 @@ public final class ValkeyDataSource: DataSource, Sendable {
     public let checkoutTimeout: Duration
 
     /// Whether a released connection has its session state cleared before it
-    /// is offered to the next scope.
+    /// is offered to the next borrower.
     ///
     /// A Valkey connection is a *session* every bit as much as a Postgres one,
     /// and this pool used to repool it untouched. `SELECT 5` through the raw
-    /// command hatch handed the next scope the wrong database; a leaked
+    /// command hatch handed the next borrower the wrong database; a leaked
     /// `WATCH` made an unrelated `MULTI` abort for no visible reason; a
-    /// connection abandoned inside `MULTI` queued the next scope's commands
+    /// connection abandoned inside `MULTI` queued the next borrower's commands
     /// instead of running them. One pipelined round trip closes all three.
     ///
     /// On by default, and only worth turning off for a deployment certain that
     /// nothing it runs touches session state. The saving is one round trip per
-    /// scope; the cost of being wrong is a scope reading the wrong database.
+    /// lease; the cost of being wrong is a borrower reading the wrong database.
     ///
     /// Deliberately not the server's own `RESET`: that also deauthenticates
     /// the connection, so on any password-protected server the next command
