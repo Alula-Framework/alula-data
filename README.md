@@ -26,11 +26,11 @@ Both are opt-in — name a driver to get it:
 
 ```swift
 // In-memory cache and the data protocols. No driver resolved at all.
-.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.24.0")
+.package(url: "https://github.com/Alula-Framework/alula-data.git", from: "0.25.0")
 
 // With PostgreSQL.
 .package(url: "https://github.com/Alula-Framework/alula-data.git",
-         from: "0.24.0", traits: ["Postgres"])
+         from: "0.25.0", traits: ["Postgres"])
 ```
 
 **Swift 6.3 or later is required**: through 6.2.x, SwiftPM did not resolve a
@@ -86,7 +86,7 @@ consumer and asserting no gated dependency reached it.
 | | Requirement |
 | --- | --- |
 | Swift | 6.3+ — see [Traits](#traits) for why |
-| alula | **0.59.0 or later** (Package.swift's floor) |
+| alula | **0.61.0 or later** (Package.swift's floor) |
 | Hangar | 0.14.0 or later (resolved only with the `Postgres` trait) |
 | Deployment target | macOS 15+, or Linux |
 | Building on macOS | the macOS 26 SDK (Xcode 26) |
@@ -97,7 +97,7 @@ The last two rows are different requirements. What you build runs on macOS 15;
 *compiling* it on a Mac needs the newer SDK, because alula's configuration
 layer resolves to FoundationEssentials only where the SDK provides it. alula
 releases before 0.21.2 also call a macOS 26+ API at a macOS 15 deployment
-target, so a Mac could not build against them at any SDK; the 0.59.0 floor is
+target, so a Mac could not build against them at any SDK; the 0.61.0 floor is
 well past that. Verified on `macos-26`, which is what the CI job runs.
 
 ## Diagnostics

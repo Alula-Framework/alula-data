@@ -93,13 +93,10 @@ public struct AlulaCacheModule: AlulaModule {
         AlulaCaches.install(runtime)
     }
 
-    public init() {
-        preconditionFailure(
-            "AlulaCacheModule takes its configuration in init(configuration:adapter:), so it "
-                + "cannot be instantiated from its type. Pass `composedBy: alulaComposeModules` "
-                + "to Alula.run — `alula new` writes that argument — or construct the module "
-                + "yourself and use the entry point taking module instances.")
-    }
+    /// Unavailable: a hand-written call is a compile error saying how to
+    /// build this module, and the composer never counts it as a candidate.
+    @available(*, unavailable, message: "AlulaCacheModule takes its configuration in init(configuration:adapter:), so it cannot be instantiated from its type. Pass `composedBy: alulaComposeModules` to Alula.run — `alula new` writes that argument — or construct the module yourself and use the entry point taking module instances.")
+    public init() { fatalError("unavailable") }
 }
 
 /// The adapter's required key, spelled here so the base module can notice a

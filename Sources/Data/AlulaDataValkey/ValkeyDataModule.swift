@@ -63,15 +63,10 @@ public final class ValkeyDataModule<Name: DataSourceName>: AlulaModule {
         self.healthChecks = [liveness.healthCheck]
     }
 
-    /// Traps. The module needs its configuration; build it with
-    /// ``init(configuration:)``, which `alulaComposeModules` does.
-    public init() {
-        preconditionFailure(
-            "ValkeyDataModule takes its configuration in init(configuration:), so it cannot be "
-                + "instantiated from its type. Pass `composedBy: alulaComposeModules` to "
-                + "Alula.run — `alula new` writes that argument — or construct the module "
-                + "yourself and use the entry point taking module instances.")
-    }
+    /// Unavailable: a hand-written call is a compile error saying how to
+    /// build this module, and the composer never counts it as a candidate.
+    @available(*, unavailable, message: "ValkeyDataModule takes its configuration in init(configuration:), so it cannot be instantiated from its type. Pass `composedBy: alulaComposeModules` to Alula.run — `alula new` writes that argument — or construct the module yourself and use the entry point taking module instances.")
+    public init() { fatalError("unavailable") }
 
     // A `ValkeyConnection` is not a component: it is leased for one operation
     // through `pool.withConnection { }` and returned when that operation ends.

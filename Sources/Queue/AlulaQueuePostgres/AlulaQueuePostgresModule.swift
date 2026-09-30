@@ -40,12 +40,8 @@ public struct AlulaQueuePostgresModule: AlulaModule {
         self.store = store
     }
 
-    /// Traps. Build the module with ``init(configuration:dataSource:)``,
-    /// which `alulaComposeModules` does.
-    public init() {
-        preconditionFailure(
-            "AlulaQueuePostgresModule takes its configuration and pool in "
-                + "init(configuration:dataSource:), so it cannot be instantiated from its type. "
-                + "Pass `composedBy: alulaComposeModules` to Alula.run.")
-    }
+    /// Unavailable: a hand-written call is a compile error saying how to
+    /// build this module, and the composer never counts it as a candidate.
+    @available(*, unavailable, message: "AlulaQueuePostgresModule takes its configuration and pool in init(configuration:dataSource:), so it cannot be instantiated from its type. Pass `composedBy: alulaComposeModules` to Alula.run.")
+    public init() { fatalError("unavailable") }
 }

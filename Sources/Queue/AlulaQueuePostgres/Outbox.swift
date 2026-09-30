@@ -174,12 +174,8 @@ public struct AlulaOutboxModule: AlulaModule {
         self.queueHandlers = [outbox.handler]
     }
 
-    /// Traps. Build the module with ``init(jobQueue:postgresQueueStore:bus:)``,
-    /// which `alulaComposeModules` does.
-    public init() {
-        preconditionFailure(
-            "AlulaOutboxModule takes the job queue, the Postgres job store and the bus in "
-                + "init(jobQueue:postgresQueueStore:bus:). Pass `composedBy: alulaComposeModules` "
-                + "to Alula.run.")
-    }
+    /// Unavailable: a hand-written call is a compile error saying how to
+    /// build this module, and the composer never counts it as a candidate.
+    @available(*, unavailable, message: "AlulaOutboxModule takes the job queue, the Postgres job store and the bus in init(jobQueue:postgresQueueStore:bus:). Pass `composedBy: alulaComposeModules` to Alula.run.")
+    public init() { fatalError("unavailable") }
 }

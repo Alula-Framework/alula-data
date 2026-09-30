@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-09-30
+
+Requires alula 0.61.0 and Hangar 0.14.0.
+
+### Fixed
+
+- **A module that cannot be composed is a build error, not a startup
+  trap.** Ten modules (`PostgresDataModule`, `ValkeyDataModule`, the cache,
+  pub/sub, queue, outbox, rate-limit and session modules) declared a public
+  `init()` whose body was `preconditionFailure("…compose it…")`. Since alula
+  0.60.0 the composer counts every public initializer of a module from
+  another package, and `init()` is always satisfiable. So when the module's
+  real initializer lacked a value, the composer built it through `init()`,
+  and the application trapped at startup instead of failing the build with
+  ALU-LIFE-8002. These initializers are now `@available(*, unavailable,
+  message:)` with the same message. alula 0.61.0's composer skips them, and
+  a hand-written `PostgresDataModule<Primary>()` is a compile error that
+  says how to build the module.
+- **`scripts/test.sh` without docker prints its hint.** It read `$pg_port`
+  before assigning it, under `set -u`, and died with "unbound variable". It
+  now names the three variables to export.
+
+### Documentation
+
+- `CONTRIBUTING.md` covers the whole package, not only the migrator it was
+  written for. `Docs/operations.md` describes `PostgresQueueStore.handBack`.
+  Container-era wording (scopes, registrations, `@Transactional`) is removed
+  from the docs and comments, and the manifest snippets pin alula 0.61.0.
+
 ## [0.24.0] - 2026-09-28
 
 Requires alula 0.59.0 and Hangar 0.14.0.

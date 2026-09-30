@@ -213,14 +213,10 @@ public struct AlulaPubSubPostgresModule: AlulaModule {
         self.adapter = adapter
     }
 
-    /// Traps. Build the module with ``init(configuration:dataSource:)``,
-    /// which `alulaComposeModules` does.
-    public init() {
-        preconditionFailure(
-            "AlulaPubSubPostgresModule takes its configuration and pool in "
-                + "init(configuration:dataSource:), so it cannot be instantiated from its type. "
-                + "Pass `composedBy: alulaComposeModules` to Alula.run.")
-    }
+    /// Unavailable: a hand-written call is a compile error saying how to
+    /// build this module, and the composer never counts it as a candidate.
+    @available(*, unavailable, message: "AlulaPubSubPostgresModule takes its configuration and pool in init(configuration:dataSource:), so it cannot be instantiated from its type. Pass `composedBy: alulaComposeModules` to Alula.run.")
+    public init() { fatalError("unavailable") }
 
     /// The listener: holds one dedicated connection for the process's life
     /// and reconnects when it drops.

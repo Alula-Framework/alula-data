@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Alula-Framework/alula.git",
       "state" : {
-        "revision" : "46bdab36b542d9dde4bba0dd5bd0960d39dd2113",
-        "version" : "0.59.0"
+        "revision" : "b2608c5fa85e7880fde37e9d4b90d4a05daeab9b",
+        "version" : "0.61.0"
       }
     },
     {

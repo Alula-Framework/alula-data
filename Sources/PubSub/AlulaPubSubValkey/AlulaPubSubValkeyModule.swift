@@ -82,14 +82,10 @@ public struct AlulaPubSubValkeyModule: AlulaModule {
         self.adapter = valkey
     }
 
-    /// The backstop for a caller writing `AlulaPubSubValkeyModule()` directly.
-    public init() {
-        preconditionFailure(
-            "AlulaPubSubValkeyModule takes its configuration in init(configuration:), so it "
-                + "cannot be instantiated from its type. Pass `composedBy: alulaComposeModules` "
-                + "to Alula.run — `alula new` writes that argument — or construct the module "
-                + "yourself and use the entry point taking module instances.")
-    }
+    /// Unavailable: a hand-written call is a compile error saying how to
+    /// build this module, and the composer never counts it as a candidate.
+    @available(*, unavailable, message: "AlulaPubSubValkeyModule takes its configuration in init(configuration:), so it cannot be instantiated from its type. Pass `composedBy: alulaComposeModules` to Alula.run — `alula new` writes that argument — or construct the module yourself and use the entry point taking module instances.")
+    public init() { fatalError("unavailable") }
 
     /// The client pool, and nothing else. The relay is `AlulaPubSubModule`'s
     /// now — see `ValkeyPubSubService` for why that ordering is no longer this

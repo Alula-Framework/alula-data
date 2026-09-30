@@ -41,7 +41,7 @@ that wanted only the cache.
 dependencies: [
     .package(
         url: "https://github.com/Alula-Framework/alula-data.git",
-        from: "0.24.0",
+        from: "0.25.0",
         traits: ["Postgres"]          // required — without it the products refuse to build
     ),
 ],
