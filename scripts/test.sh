@@ -16,16 +16,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-if ! command -v docker >/dev/null; then
-  echo "docker is needed to start the test servers." >&2
-  echo "Already have servers? Export ALULA_POSTGRES_TEST_DATABASE_URL="postgres://postgres:alula@127.0.0.1:$pg_port/alula_test" (and friends) and run swift test directly." >&2
-  exit 1
-fi
-
 pg_name="alula-test-postgres"
 vk_name="alula-test-valkey"
 pg_port=${ALULA_TEST_PG_PORT:-55498}
 vk_port=${ALULA_TEST_VALKEY_PORT:-56398}
+
+if ! command -v docker >/dev/null; then
+  echo "docker is needed to start the test servers." >&2
+  echo "Already have servers? Export these, then run swift test --enable-all-traits directly:" >&2
+  echo "  ALULA_POSTGRES_TEST_DATABASE_URL=postgres://postgres:alula@127.0.0.1:$pg_port/alula_test" >&2
+  echo "  ALULA_MIGRATE_TEST_DATABASE_URL=postgres://postgres:alula@127.0.0.1:$pg_port/alula_test" >&2
+  echo "  ALULA_VALKEY_TEST_URL=redis://127.0.0.1:$vk_port" >&2
+  exit 1
+fi
 
 # The outage suites stop and start a server mid-test, so they get their own
 # throwaway containers rather than the shared ones. Their ports and names are
